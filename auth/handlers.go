@@ -22,13 +22,13 @@ type Server struct {
 }
 
 // NewServer creates a new OAuth server.
-func NewServer(baseURL string, google *GoogleProvider, store TokenStore, logger *slog.Logger) *Server {
+func NewServer(baseURL string, google *GoogleProvider, store TokenStore, logger *slog.Logger, accessTokenTTL time.Duration) *Server {
 	return &Server{
 		baseURL:        baseURL,
 		google:         google,
 		store:          store,
 		logger:         logger,
-		accessTokenTTL: 1 * time.Hour,
+		accessTokenTTL: accessTokenTTL,
 	}
 }
 

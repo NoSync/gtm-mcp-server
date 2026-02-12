@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -24,6 +25,9 @@ type Config struct {
 
 	// Logging
 	LogLevel string
+
+	// Token configuration
+	AccessTokenTTL time.Duration
 }
 
 // Load reads configuration from environment variables.
@@ -42,6 +46,7 @@ func Load() (*Config, error) {
 		GoogleRedirectURI: getEnv("GOOGLE_REDIRECT_URI", ""),
 		JWTSecret:         getEnv("JWT_SECRET", ""),
 		LogLevel:          getEnv("LOG_LEVEL", "info"),
+		AccessTokenTTL:    getEnvDuration("ACCESS_TOKEN_TTL", 8*time.Hour),
 	}
 
 	// Validation is deferred to when auth is actually needed
@@ -68,6 +73,15 @@ func (c *Config) ValidateAuth() error {
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
+	}
+	return defaultValue
+}
+
+func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
+	if value := os.Getenv(key); value != "" {
+		if d, err := time.ParseDuration(value); err == nil {
+			return d
+		}
 	}
 	return defaultValue
 }

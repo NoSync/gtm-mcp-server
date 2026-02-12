@@ -76,6 +76,61 @@ func TestMemoryTokenStore_GetTokenByAccess_Expired(t *testing.T) {
 	}
 }
 
+func TestGetTokenByAccessIncludeExpired(t *testing.T) {
+	store := NewMemoryTokenStore()
+	defer store.Close()
+
+	tokenInfo := &TokenInfo{
+		AccessToken:  "expired-token",
+		RefreshToken: "refresh-token",
+		ExpiresAt:    time.Now().Add(-1 * time.Hour), // Expired 1 hour ago
+		GoogleToken: &oauth2.Token{
+			AccessToken:  "google-token",
+			RefreshToken: "google-refresh",
+			Expiry:       time.Now().Add(1 * time.Hour),
+		},
+		ClientID:  "test-client",
+		CreatedAt: time.Now(),
+	}
+
+	err := store.StoreToken(tokenInfo)
+	if err != nil {
+		t.Fatalf("StoreToken failed: %v", err)
+	}
+
+	// Regular GetTokenByAccess should return ErrTokenExpired
+	_, err = store.GetTokenByAccess("expired-token")
+	if err != ErrTokenExpired {
+		t.Errorf("expected ErrTokenExpired, got %v", err)
+	}
+
+	// GetTokenByAccessIncludeExpired should return the token
+	retrieved, err := store.GetTokenByAccessIncludeExpired("expired-token")
+	if err != nil {
+		t.Fatalf("GetTokenByAccessIncludeExpired failed: %v", err)
+	}
+
+	if retrieved.AccessToken != "expired-token" {
+		t.Errorf("expected access token %q, got %q", "expired-token", retrieved.AccessToken)
+	}
+	if retrieved.RefreshToken != "refresh-token" {
+		t.Errorf("expected refresh token %q, got %q", "refresh-token", retrieved.RefreshToken)
+	}
+	if retrieved.ClientID != "test-client" {
+		t.Errorf("expected client ID %q, got %q", "test-client", retrieved.ClientID)
+	}
+}
+
+func TestGetTokenByAccessIncludeExpired_NotFound(t *testing.T) {
+	store := NewMemoryTokenStore()
+	defer store.Close()
+
+	_, err := store.GetTokenByAccessIncludeExpired("nonexistent")
+	if err != ErrTokenNotFound {
+		t.Errorf("expected ErrTokenNotFound, got %v", err)
+	}
+}
+
 func TestMemoryTokenStore_GetTokenByRefresh(t *testing.T) {
 	store := NewMemoryTokenStore()
 	defer store.Close()

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"golang.org/x/oauth2"
 )
@@ -26,18 +27,22 @@ const (
 )
 
 // Middleware creates HTTP middleware that validates bearer tokens.
-func Middleware(store TokenStore, google *GoogleProvider, logger *slog.Logger, baseURL string) func(http.Handler) http.Handler {
+// If a token is expired but has a valid refresh token, it will automatically
+// refresh the token and continue the request transparently.
+func Middleware(store TokenStore, google *GoogleProvider, logger *slog.Logger, baseURL string, accessTokenTTL time.Duration) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Extract bearer token from Authorization header
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
+				logger.Warn("auth_failed", "reason", "missing_header")
 				unauthorized(w, baseURL, "Missing authorization header")
 				return
 			}
 
 			parts := strings.SplitN(authHeader, " ", 2)
 			if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
+				logger.Warn("auth_failed", "reason", "invalid_format")
 				unauthorized(w, baseURL, "Invalid authorization header format")
 				return
 			}
@@ -48,11 +53,17 @@ func Middleware(store TokenStore, google *GoogleProvider, logger *slog.Logger, b
 			tokenInfo, err := store.GetTokenByAccess(accessToken)
 			if err != nil {
 				if err == ErrTokenExpired {
-					unauthorized(w, baseURL, "Token expired")
+					// Attempt auto-refresh
+					tokenInfo, err = tryAutoRefresh(r.Context(), store, google, logger, accessToken, baseURL, accessTokenTTL)
+					if err != nil {
+						unauthorized(w, baseURL, err.Error())
+						return
+					}
 				} else {
+					logger.Warn("auth_failed", "reason", "token_not_found", "token_prefix", truncateToken(accessToken))
 					unauthorized(w, baseURL, "Invalid token")
+					return
 				}
-				return
 			}
 
 			// Add token info and dependencies to context
@@ -68,6 +79,76 @@ func Middleware(store TokenStore, google *GoogleProvider, logger *slog.Logger, b
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// tryAutoRefresh attempts to refresh an expired token transparently.
+func tryAutoRefresh(ctx context.Context, store TokenStore, google *GoogleProvider, logger *slog.Logger, accessToken string, baseURL string, accessTokenTTL time.Duration) (*TokenInfo, error) {
+	logger.Info("auth_token_expired", "token_prefix", truncateToken(accessToken), "action", "auto_refresh")
+
+	// Get the expired token info (including refresh token)
+	expiredToken, err := store.GetTokenByAccessIncludeExpired(accessToken)
+	if err != nil {
+		logger.Warn("auth_auto_refresh_failed", "reason", "token_not_found", "error", err)
+		return nil, fmt.Errorf("Token expired")
+	}
+
+	// Check refresh token exists
+	if expiredToken.RefreshToken == "" || expiredToken.GoogleToken == nil || expiredToken.GoogleToken.RefreshToken == "" {
+		logger.Warn("auth_auto_refresh_failed", "reason", "no_refresh_token", "client_id", expiredToken.ClientID)
+		return nil, fmt.Errorf("Token expired, no refresh token available")
+	}
+
+	// Check refresh token hasn't expired
+	if !expiredToken.RefreshExpiresAt.IsZero() && time.Now().After(expiredToken.RefreshExpiresAt) {
+		logger.Warn("auth_auto_refresh_failed", "reason", "refresh_token_expired", "client_id", expiredToken.ClientID)
+		return nil, fmt.Errorf("Token expired, refresh token also expired")
+	}
+
+	// Refresh the Google token
+	newGoogleToken, err := google.RefreshToken(ctx, expiredToken.GoogleToken.RefreshToken)
+	if err != nil {
+		logger.Warn("auth_auto_refresh_failed", "reason", "google_refresh_failed", "client_id", expiredToken.ClientID, "error", err)
+		return nil, fmt.Errorf("Token expired, failed to refresh")
+	}
+
+	// Generate new tokens (rotation)
+	newAccessToken, err := GenerateToken(32)
+	if err != nil {
+		logger.Warn("auth_auto_refresh_failed", "reason", "token_generation_failed", "error", err)
+		return nil, fmt.Errorf("Token expired")
+	}
+
+	newRefreshToken, err := GenerateToken(32)
+	if err != nil {
+		logger.Warn("auth_auto_refresh_failed", "reason", "token_generation_failed", "error", err)
+		return nil, fmt.Errorf("Token expired")
+	}
+
+	// Delete old token
+	_ = store.DeleteToken(accessToken)
+
+	// Store new token
+	newTokenInfo := &TokenInfo{
+		AccessToken:      newAccessToken,
+		RefreshToken:     newRefreshToken,
+		ExpiresAt:        time.Now().Add(accessTokenTTL),
+		RefreshExpiresAt: time.Now().Add(30 * 24 * time.Hour),
+		GoogleToken:      newGoogleToken,
+		ClientID:         expiredToken.ClientID,
+		CreatedAt:        time.Now(),
+	}
+
+	if err := store.StoreToken(newTokenInfo); err != nil {
+		logger.Warn("auth_auto_refresh_failed", "reason", "store_failed", "error", err)
+		return nil, fmt.Errorf("Token expired")
+	}
+
+	logger.Info("auth_auto_refresh_success",
+		"client_id", expiredToken.ClientID,
+		"new_expiry", newTokenInfo.ExpiresAt,
+	)
+
+	return newTokenInfo, nil
 }
 
 // OptionalMiddleware allows unauthenticated requests but adds token info if present.
@@ -142,11 +223,26 @@ func unauthorized(w http.ResponseWriter, baseURL, message string) {
 
 	w.Header().Set("WWW-Authenticate", authHeader)
 	w.Header().Set("Content-Type", "application/json")
+
+	if strings.Contains(strings.ToLower(message), "expired") {
+		w.Header().Set("Retry-After", "0")
+	}
+
 	w.WriteHeader(http.StatusUnauthorized)
 
 	resp := map[string]string{
-		"error":             "unauthorized",
-		"error_description": message,
+		"error":                  "unauthorized",
+		"error_description":      message,
+		"authorization_endpoint": baseURL + "/authorize",
+		"token_endpoint":         baseURL + "/token",
 	}
 	json.NewEncoder(w).Encode(resp)
+}
+
+// truncateToken returns the first 8 characters of a token for safe logging.
+func truncateToken(token string) string {
+	if len(token) <= 8 {
+		return token + "..."
+	}
+	return token[:8] + "..."
 }

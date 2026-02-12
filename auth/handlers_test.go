@@ -215,7 +215,7 @@ func TestServer_AuthorizeHandler_MethodNotAllowed(t *testing.T) {
 	defer store.Close()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	server := NewServer("http://localhost:8080", nil, store, logger)
+	server := NewServer("http://localhost:8080", nil, store, logger, 1*time.Hour)
 
 	req := httptest.NewRequest(http.MethodPost, "/authorize", nil)
 	w := httptest.NewRecorder()
@@ -232,7 +232,7 @@ func TestServer_AuthorizeHandler_InvalidResponseType(t *testing.T) {
 	defer store.Close()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	server := NewServer("http://localhost:8080", nil, store, logger)
+	server := NewServer("http://localhost:8080", nil, store, logger, 1*time.Hour)
 
 	req := httptest.NewRequest(http.MethodGet, "/authorize?response_type=token&state=test", nil)
 	w := httptest.NewRecorder()
@@ -253,7 +253,7 @@ func TestServer_AuthorizeHandler_MissingState(t *testing.T) {
 	defer store.Close()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	server := NewServer("http://localhost:8080", nil, store, logger)
+	server := NewServer("http://localhost:8080", nil, store, logger, 1*time.Hour)
 
 	req := httptest.NewRequest(http.MethodGet, "/authorize?response_type=code", nil)
 	w := httptest.NewRecorder()
@@ -274,7 +274,7 @@ func TestServer_AuthorizeHandler_InvalidRedirectURI(t *testing.T) {
 	defer store.Close()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	server := NewServer("http://localhost:8080", nil, store, logger)
+	server := NewServer("http://localhost:8080", nil, store, logger, 1*time.Hour)
 
 	tests := []struct {
 		name        string
@@ -324,7 +324,7 @@ func TestServer_AuthorizeHandler_MissingPKCE(t *testing.T) {
 	defer store.Close()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	server := NewServer("http://localhost:8080", nil, store, logger)
+	server := NewServer("http://localhost:8080", nil, store, logger, 1*time.Hour)
 
 	tests := []struct {
 		name                string
@@ -390,7 +390,7 @@ func TestServer_AuthorizeHandler_RegisteredClientValidation(t *testing.T) {
 	store.StoreClient(clientInfo)
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	server := NewServer("http://localhost:8080", nil, store, logger)
+	server := NewServer("http://localhost:8080", nil, store, logger, 1*time.Hour)
 
 	// Test that unregistered redirect URI is rejected for a registered client
 	params := url.Values{}
@@ -461,7 +461,7 @@ func TestServer_TokenHandler_MethodNotAllowed(t *testing.T) {
 	defer store.Close()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	server := NewServer("http://localhost:8080", nil, store, logger)
+	server := NewServer("http://localhost:8080", nil, store, logger, 1*time.Hour)
 
 	req := httptest.NewRequest(http.MethodGet, "/token", nil)
 	w := httptest.NewRecorder()
@@ -478,7 +478,7 @@ func TestServer_TokenHandler_UnsupportedGrantType(t *testing.T) {
 	defer store.Close()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	server := NewServer("http://localhost:8080", nil, store, logger)
+	server := NewServer("http://localhost:8080", nil, store, logger, 1*time.Hour)
 
 	form := url.Values{}
 	form.Set("grant_type", "client_credentials")
@@ -503,7 +503,7 @@ func TestServer_HandleAuthorizationCodeGrant_MissingCode(t *testing.T) {
 	defer store.Close()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	server := NewServer("http://localhost:8080", nil, store, logger)
+	server := NewServer("http://localhost:8080", nil, store, logger, 1*time.Hour)
 
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
@@ -529,7 +529,7 @@ func TestServer_HandleAuthorizationCodeGrant_InvalidCode(t *testing.T) {
 	defer store.Close()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	server := NewServer("http://localhost:8080", nil, store, logger)
+	server := NewServer("http://localhost:8080", nil, store, logger, 1*time.Hour)
 
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
@@ -556,7 +556,7 @@ func TestServer_HandleAuthorizationCodeGrant_MissingCodeVerifier(t *testing.T) {
 	defer store.Close()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	server := NewServer("http://localhost:8080", nil, store, logger)
+	server := NewServer("http://localhost:8080", nil, store, logger, 1*time.Hour)
 
 	// Store a valid code state
 	codeState := &AuthState{
@@ -591,7 +591,7 @@ func TestServer_HandleRefreshTokenGrant_MissingRefreshToken(t *testing.T) {
 	defer store.Close()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	server := NewServer("http://localhost:8080", nil, store, logger)
+	server := NewServer("http://localhost:8080", nil, store, logger, 1*time.Hour)
 
 	form := url.Values{}
 	form.Set("grant_type", "refresh_token")
@@ -617,7 +617,7 @@ func TestServer_HandleRefreshTokenGrant_InvalidRefreshToken(t *testing.T) {
 	defer store.Close()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	server := NewServer("http://localhost:8080", nil, store, logger)
+	server := NewServer("http://localhost:8080", nil, store, logger, 1*time.Hour)
 
 	form := url.Values{}
 	form.Set("grant_type", "refresh_token")
@@ -643,7 +643,7 @@ func TestServer_CallbackHandler_MethodNotAllowed(t *testing.T) {
 	defer store.Close()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	server := NewServer("http://localhost:8080", nil, store, logger)
+	server := NewServer("http://localhost:8080", nil, store, logger, 1*time.Hour)
 
 	req := httptest.NewRequest(http.MethodPost, "/oauth/callback", nil)
 	w := httptest.NewRecorder()
@@ -660,7 +660,7 @@ func TestServer_CallbackHandler_GoogleError(t *testing.T) {
 	defer store.Close()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	server := NewServer("http://localhost:8080", nil, store, logger)
+	server := NewServer("http://localhost:8080", nil, store, logger, 1*time.Hour)
 
 	params := url.Values{}
 	params.Set("error", "access_denied")
@@ -685,7 +685,7 @@ func TestServer_CallbackHandler_MissingCodeOrState(t *testing.T) {
 	defer store.Close()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	server := NewServer("http://localhost:8080", nil, store, logger)
+	server := NewServer("http://localhost:8080", nil, store, logger, 1*time.Hour)
 
 	tests := []struct {
 		name   string
@@ -728,7 +728,7 @@ func TestServer_CallbackHandler_InvalidStateFormat(t *testing.T) {
 	defer store.Close()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	server := NewServer("http://localhost:8080", nil, store, logger)
+	server := NewServer("http://localhost:8080", nil, store, logger, 1*time.Hour)
 
 	params := url.Values{}
 	params.Set("code", "test-code")
@@ -753,7 +753,7 @@ func TestServer_CallbackHandler_ExpiredState(t *testing.T) {
 	defer store.Close()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	server := NewServer("http://localhost:8080", nil, store, logger)
+	server := NewServer("http://localhost:8080", nil, store, logger, 1*time.Hour)
 
 	params := url.Values{}
 	params.Set("code", "test-code")

@@ -60,6 +60,7 @@ type TokenStore interface {
 	// Token operations
 	StoreToken(info *TokenInfo) error
 	GetTokenByAccess(accessToken string) (*TokenInfo, error)
+	GetTokenByAccessIncludeExpired(accessToken string) (*TokenInfo, error)
 	GetTokenByRefresh(refreshToken string) (*TokenInfo, error)
 	DeleteToken(accessToken string) error
 	UpdateGoogleToken(accessToken string, googleToken *oauth2.Token) error
@@ -136,6 +137,18 @@ func (s *MemoryTokenStore) GetTokenByAccess(accessToken string) (*TokenInfo, err
 
 	if time.Now().After(info.ExpiresAt) {
 		return nil, ErrTokenExpired
+	}
+
+	return info, nil
+}
+
+func (s *MemoryTokenStore) GetTokenByAccessIncludeExpired(accessToken string) (*TokenInfo, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	info, ok := s.tokens[accessToken]
+	if !ok {
+		return nil, ErrTokenNotFound
 	}
 
 	return info, nil

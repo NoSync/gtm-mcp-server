@@ -21,7 +21,7 @@ import (
 
 const (
 	serverName    = "gtm-mcp-server"
-	serverVersion = "1.1.0"
+	serverVersion = "1.2.0"
 )
 
 func main() {
@@ -102,7 +102,7 @@ func main() {
 			cfg.GoogleClientSecret,
 			cfg.BaseURL+"/oauth/callback",
 		)
-		authServer = auth.NewServer(cfg.BaseURL, googleProvider, tokenStore, logger)
+		authServer = auth.NewServer(cfg.BaseURL, googleProvider, tokenStore, logger, cfg.AccessTokenTTL)
 
 		// OAuth endpoints with rate limiting and body size limits
 		mux.HandleFunc("GET /authorize", oauthLimiter.MiddlewareFunc(authServer.AuthorizeHandler))
@@ -112,7 +112,7 @@ func main() {
 
 		// MCP endpoint with REQUIRED auth middleware and body size limit
 		// Returns 401 if no valid Bearer token - triggers Claude's OAuth flow
-		authMiddleware := auth.Middleware(tokenStore, googleProvider, logger, cfg.BaseURL)
+		authMiddleware := auth.Middleware(tokenStore, googleProvider, logger, cfg.BaseURL, cfg.AccessTokenTTL)
 		mux.Handle("/", authMiddleware(maxBytesHandler(5<<20, mcpHandler)))
 
 		logger.Info("OAuth configured",
