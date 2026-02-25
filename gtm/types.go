@@ -10,16 +10,32 @@ type Parameter struct {
 	Map   []Parameter `json:"map,omitempty"`
 }
 
+// SetupTagInput represents a setup tag reference for tag sequencing.
+type SetupTagInput struct {
+	TagName            string `json:"tagName"`
+	StopOnSetupFailure bool   `json:"stopOnSetupFailure,omitempty"`
+}
+
+// TeardownTagInput represents a teardown tag reference for tag sequencing.
+type TeardownTagInput struct {
+	TagName               string `json:"tagName"`
+	StopTeardownOnFailure bool   `json:"stopTeardownOnFailure,omitempty"`
+}
+
 // TagInput represents input for creating/updating a tag.
 type TagInput struct {
-	Name               string      `json:"name"`
-	Type               string      `json:"type"`
-	FiringTriggerId    []string    `json:"firingTriggerId"`
-	BlockingTriggerId  []string    `json:"blockingTriggerId,omitempty"`
-	Parameter          []Parameter `json:"parameter,omitempty"`
-	Notes              string      `json:"notes,omitempty"`
-	Paused             bool        `json:"paused,omitempty"`
-	TagFiringOption    string      `json:"tagFiringOption,omitempty"`
+	Name               string             `json:"name"`
+	Type               string             `json:"type"`
+	FiringTriggerId    []string           `json:"firingTriggerId"`
+	BlockingTriggerId  []string           `json:"blockingTriggerId,omitempty"`
+	Parameter          []Parameter        `json:"parameter,omitempty"`
+	Notes              string             `json:"notes,omitempty"`
+	Paused             bool               `json:"paused,omitempty"`
+	TagFiringOption    string             `json:"tagFiringOption,omitempty"`
+	SetupTag           []SetupTagInput    `json:"setupTag,omitempty"`
+	TeardownTag        []TeardownTagInput `json:"teardownTag,omitempty"`
+	ClearSetupTag      bool               `json:"-"` // When true, explicitly clear setup tags
+	ClearTeardownTag   bool               `json:"-"` // When true, explicitly clear teardown tags
 }
 
 // TriggerInput represents input for creating/updating a trigger.

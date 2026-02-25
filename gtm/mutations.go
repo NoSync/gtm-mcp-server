@@ -20,6 +20,8 @@ func (c *Client) CreateTag(ctx context.Context, accountID, containerID, workspac
 		Notes:             input.Notes,
 		Paused:            input.Paused,
 		TagFiringOption:   input.TagFiringOption,
+		SetupTag:          toAPISetupTags(input.SetupTag),
+		TeardownTag:       toAPITeardownTags(input.TeardownTag),
 	}
 
 	result, err := c.Service.Accounts.Containers.Workspaces.Tags.Create(parent, tag).Context(ctx).Do()
@@ -44,6 +46,17 @@ func (c *Client) UpdateTag(ctx context.Context, path string, input *TagInput) (*
 		return nil, mapGoogleError(err)
 	}
 
+	// Preserve existing setup/teardown tags when not provided in input.
+	// If ClearSetupTag/ClearTeardownTag is set, explicitly clear them (empty array was passed).
+	setupTags := toAPISetupTags(input.SetupTag)
+	if setupTags == nil && !input.ClearSetupTag {
+		setupTags = current.SetupTag
+	}
+	teardownTags := toAPITeardownTags(input.TeardownTag)
+	if teardownTags == nil && !input.ClearTeardownTag {
+		teardownTags = current.TeardownTag
+	}
+
 	// Build updated tag with fingerprint
 	tag := &tagmanager.Tag{
 		Name:              input.Name,
@@ -54,6 +67,8 @@ func (c *Client) UpdateTag(ctx context.Context, path string, input *TagInput) (*
 		Notes:             input.Notes,
 		Paused:            input.Paused,
 		TagFiringOption:   input.TagFiringOption,
+		SetupTag:          setupTags,
+		TeardownTag:       teardownTags,
 		Fingerprint:       current.Fingerprint,
 	}
 
@@ -300,6 +315,34 @@ func toAPIParam(p *Parameter) *tagmanager.Parameter {
 		param.Map = toAPIParams(p.Map)
 	}
 	return param
+}
+
+func toAPISetupTags(tags []SetupTagInput) []*tagmanager.SetupTag {
+	if len(tags) == 0 {
+		return nil
+	}
+	result := make([]*tagmanager.SetupTag, len(tags))
+	for i, t := range tags {
+		result[i] = &tagmanager.SetupTag{
+			TagName:            t.TagName,
+			StopOnSetupFailure: t.StopOnSetupFailure,
+		}
+	}
+	return result
+}
+
+func toAPITeardownTags(tags []TeardownTagInput) []*tagmanager.TeardownTag {
+	if len(tags) == 0 {
+		return nil
+	}
+	result := make([]*tagmanager.TeardownTag, len(tags))
+	for i, t := range tags {
+		result[i] = &tagmanager.TeardownTag{
+			TagName:               t.TagName,
+			StopTeardownOnFailure: t.StopTeardownOnFailure,
+		}
+	}
+	return result
 }
 
 func toAPIConditions(conditions []Condition) []*tagmanager.Condition {

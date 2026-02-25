@@ -19,6 +19,8 @@ type UpdateTagInput struct {
 	FiringTriggerIDs   []string `json:"firingTriggerIds" jsonschema:"description:Array of trigger IDs that fire this tag"`
 	BlockingTriggerIDs []string `json:"blockingTriggerIds,omitempty" jsonschema:"description:Array of trigger IDs that block this tag (optional)"`
 	ParametersJSON     string   `json:"parametersJson,omitempty" jsonschema:"description:Tag parameters as JSON array (optional)"`
+	SetupTagJSON       string   `json:"setupTagJson,omitempty" jsonschema:"description:Setup tag sequencing as JSON array (optional). Each element: {tagName: string, stopOnSetupFailure: bool}. The setup tag fires before this tag."`
+	TeardownTagJSON    string   `json:"teardownTagJson,omitempty" jsonschema:"description:Teardown tag sequencing as JSON array (optional). Each element: {tagName: string, stopTeardownOnFailure: bool}. The teardown tag fires after this tag."`
 	Notes              string   `json:"notes,omitempty" jsonschema:"description:Tag notes (optional)"`
 	Paused             bool     `json:"paused,omitempty" jsonschema:"description:Whether tag is paused (optional)"`
 }
@@ -57,6 +59,30 @@ func registerUpdateTag(server *mcp.Server) {
 			}
 		}
 
+		// Parse setup tag JSON if provided
+		var setupTags []SetupTagInput
+		var clearSetup bool
+		if input.SetupTagJSON != "" {
+			if err := json.Unmarshal([]byte(input.SetupTagJSON), &setupTags); err != nil {
+				return nil, UpdateTagOutput{}, fmt.Errorf("invalid setupTagJson: %w", err)
+			}
+			if len(setupTags) == 0 {
+				clearSetup = true
+			}
+		}
+
+		// Parse teardown tag JSON if provided
+		var teardownTags []TeardownTagInput
+		var clearTeardown bool
+		if input.TeardownTagJSON != "" {
+			if err := json.Unmarshal([]byte(input.TeardownTagJSON), &teardownTags); err != nil {
+				return nil, UpdateTagOutput{}, fmt.Errorf("invalid teardownTagJson: %w", err)
+			}
+			if len(teardownTags) == 0 {
+				clearTeardown = true
+			}
+		}
+
 		tagInput := &TagInput{
 			Name:              input.Name,
 			Type:              input.Type,
@@ -65,6 +91,10 @@ func registerUpdateTag(server *mcp.Server) {
 			Parameter:         params,
 			Notes:             input.Notes,
 			Paused:            input.Paused,
+			SetupTag:          setupTags,
+			TeardownTag:       teardownTags,
+			ClearSetupTag:     clearSetup,
+			ClearTeardownTag:  clearTeardown,
 		}
 
 		tag, err := wc.Client.UpdateTag(ctx, path, tagInput)

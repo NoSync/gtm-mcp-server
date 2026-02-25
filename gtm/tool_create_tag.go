@@ -3,6 +3,7 @@ package gtm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -17,6 +18,8 @@ type CreateTagInput struct {
 	FiringTriggerIDs   []string `json:"firingTriggerIds" jsonschema:"description:Array of trigger IDs that fire this tag"`
 	BlockingTriggerIDs []string `json:"blockingTriggerIds,omitempty" jsonschema:"description:Array of trigger IDs that block this tag (optional)"`
 	ParametersJSON     string   `json:"parametersJson,omitempty" jsonschema:"description:Tag parameters as JSON array (optional). Each parameter: {type, key, value} or {type, key, list/map}"`
+	SetupTagJSON       string   `json:"setupTagJson,omitempty" jsonschema:"description:Setup tag sequencing as JSON array (optional). Each element: {tagName: string, stopOnSetupFailure: bool}. The setup tag fires before this tag."`
+	TeardownTagJSON    string   `json:"teardownTagJson,omitempty" jsonschema:"description:Teardown tag sequencing as JSON array (optional). Each element: {tagName: string, stopTeardownOnFailure: bool}. The teardown tag fires after this tag."`
 	Notes              string   `json:"notes,omitempty" jsonschema:"description:Tag notes (optional)"`
 	Paused             bool     `json:"paused,omitempty" jsonschema:"description:Whether tag is paused (optional)"`
 }
@@ -48,6 +51,22 @@ func registerCreateTag(server *mcp.Server) {
 			}
 		}
 
+		// Parse setup tag JSON if provided
+		var setupTags []SetupTagInput
+		if input.SetupTagJSON != "" {
+			if err := json.Unmarshal([]byte(input.SetupTagJSON), &setupTags); err != nil {
+				return nil, CreateTagOutput{}, fmt.Errorf("invalid setupTagJson: %w", err)
+			}
+		}
+
+		// Parse teardown tag JSON if provided
+		var teardownTags []TeardownTagInput
+		if input.TeardownTagJSON != "" {
+			if err := json.Unmarshal([]byte(input.TeardownTagJSON), &teardownTags); err != nil {
+				return nil, CreateTagOutput{}, fmt.Errorf("invalid teardownTagJson: %w", err)
+			}
+		}
+
 		tagInput := &TagInput{
 			Name:              input.Name,
 			Type:              input.Type,
@@ -56,6 +75,8 @@ func registerCreateTag(server *mcp.Server) {
 			Parameter:         params,
 			Notes:             input.Notes,
 			Paused:            input.Paused,
+			SetupTag:          setupTags,
+			TeardownTag:       teardownTags,
 		}
 
 		tag, err := wc.Client.CreateTag(ctx, wc.AccountID, wc.ContainerID, wc.WorkspaceID, tagInput)

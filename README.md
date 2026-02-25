@@ -391,24 +391,6 @@ This has been confirmed by HTTP-level debugging: the correct JSON is sent in the
 
 **Status:** [#33](https://github.com/paolobietolini/gtm-mcp-server/issues/33)
 
-### 🐛 Unhelpful error when deleting tags with sequencing references
-
-The Google Tag Manager API returns a generic `400 INVALID_ARGUMENT` when attempting to delete a tag that is referenced as a setup or teardown tag by another tag (tag sequencing). The error provides no indication of the dependency:
-
-```json
-{
-  "error": {
-    "code": 400,
-    "message": "Returned an error response for your request.",
-    "status": "INVALID_ARGUMENT"
-  }
-}
-```
-
-**Diagnosis:** If a tag cannot be deleted and the error is generic, check if another tag references it via tag sequencing (setup/teardown). The `list_tags` and `get_tag` tools now include `setupTag` and `teardownTag` fields to make these dependencies visible.
-
-**Fix:** Remove the tag sequencing reference from the dependent tag first, then delete the target tag.
-
 ---
 
 ## Links
