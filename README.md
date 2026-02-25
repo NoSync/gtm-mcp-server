@@ -391,9 +391,9 @@ This has been confirmed by HTTP-level debugging: the correct JSON is sent in the
 
 **Status:** [#33](https://github.com/paolobietolini/gtm-mcp-server/issues/33)
 
-### 🐛 Cannot delete Community Template Gallery tags via API
+### 🐛 Unhelpful error when deleting tags with sequencing references
 
-Tags created from the [Community Template Gallery](https://tagmanager.google.com/gallery/) (tag types prefixed with `cvt_`) cannot be deleted through the Google Tag Manager API. The API returns a generic `400 INVALID_ARGUMENT` error with no actionable detail:
+The Google Tag Manager API returns a generic `400 INVALID_ARGUMENT` when attempting to delete a tag that is referenced as a setup or teardown tag by another tag (tag sequencing). The error provides no indication of the dependency:
 
 ```json
 {
@@ -405,9 +405,9 @@ Tags created from the [Community Template Gallery](https://tagmanager.google.com
 }
 ```
 
-This happens even after removing all firing/blocking triggers from the tag. Creating and then immediately deleting a new `cvt_` tag also fails. Standard tag types (e.g., `gaawe`, `html`) can be deleted without issues.
+**Diagnosis:** If a tag cannot be deleted and the error is generic, check if another tag references it via tag sequencing (setup/teardown). The `list_tags` and `get_tag` tools now include `setupTag` and `teardownTag` fields to make these dependencies visible.
 
-**Workaround:** Delete gallery template tags manually through the [GTM web interface](https://tagmanager.google.com). You can use `update_tag` to pause the tag via the API first, then delete it from the UI.
+**Fix:** Remove the tag sequencing reference from the dependent tag first, then delete the target tag.
 
 ---
 

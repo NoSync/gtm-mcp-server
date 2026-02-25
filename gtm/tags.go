@@ -7,15 +7,23 @@ import (
 	tagmanager "google.golang.org/api/tagmanager/v2"
 )
 
+// TagSequenceRef represents a setup or teardown tag reference.
+type TagSequenceRef struct {
+	TagName            string `json:"tagName"`
+	StopOnFailure      bool   `json:"stopOnFailure,omitempty"`
+}
+
 // Tag is a simplified representation of a GTM tag.
 type Tag struct {
-	TagID            string   `json:"tagId"`
-	Name             string   `json:"name"`
-	Type             string   `json:"type"`
-	FiringTriggerID  []string `json:"firingTriggerId,omitempty"`
-	BlockingTriggerID []string `json:"blockingTriggerId,omitempty"`
-	Paused           bool     `json:"paused,omitempty"`
-	Path             string   `json:"path"`
+	TagID             string           `json:"tagId"`
+	Name              string           `json:"name"`
+	Type              string           `json:"type"`
+	FiringTriggerID   []string         `json:"firingTriggerId,omitempty"`
+	BlockingTriggerID []string         `json:"blockingTriggerId,omitempty"`
+	SetupTag          []TagSequenceRef `json:"setupTag,omitempty"`
+	TeardownTag       []TagSequenceRef `json:"teardownTag,omitempty"`
+	Paused            bool             `json:"paused,omitempty"`
+	Path              string           `json:"path"`
 }
 
 // ListTags returns all tags in a workspace.
@@ -57,13 +65,26 @@ func toTags(tags []*tagmanager.Tag) []Tag {
 }
 
 func toTag(t *tagmanager.Tag) Tag {
-	return Tag{
-		TagID:            t.TagId,
-		Name:             t.Name,
-		Type:             t.Type,
-		FiringTriggerID:  t.FiringTriggerId,
+	tag := Tag{
+		TagID:             t.TagId,
+		Name:              t.Name,
+		Type:              t.Type,
+		FiringTriggerID:   t.FiringTriggerId,
 		BlockingTriggerID: t.BlockingTriggerId,
-		Paused:           t.Paused,
-		Path:             t.Path,
+		Paused:            t.Paused,
+		Path:              t.Path,
 	}
+	for _, s := range t.SetupTag {
+		tag.SetupTag = append(tag.SetupTag, TagSequenceRef{
+			TagName:       s.TagName,
+			StopOnFailure: s.StopOnSetupFailure,
+		})
+	}
+	for _, s := range t.TeardownTag {
+		tag.TeardownTag = append(tag.TeardownTag, TagSequenceRef{
+			TagName:       s.TagName,
+			StopOnFailure: s.StopTeardownOnFailure,
+		})
+	}
+	return tag
 }
