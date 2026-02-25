@@ -63,6 +63,20 @@ func retryWithBackoff[T any](ctx context.Context, maxRetries int, fn func() (T, 
 	return zero, fmt.Errorf("max retries exceeded: %w", lastErr)
 }
 
+// formatAPIErrorDetail extracts all available detail from a Google API error.
+func formatAPIErrorDetail(apiErr *googleapi.Error) string {
+	detail := apiErr.Message
+	if len(apiErr.Errors) > 0 {
+		for _, e := range apiErr.Errors {
+			detail += fmt.Sprintf("\n  reason=%s: %s", e.Reason, e.Message)
+		}
+	}
+	if apiErr.Body != "" {
+		detail += fmt.Sprintf("\n  body: %s", apiErr.Body)
+	}
+	return detail
+}
+
 // mapGoogleError converts Google API errors to our error types.
 func mapGoogleError(err error) error {
 	if err == nil {
@@ -71,17 +85,20 @@ func mapGoogleError(err error) error {
 
 	var apiErr *googleapi.Error
 	if errors.As(err, &apiErr) {
+		detail := formatAPIErrorDetail(apiErr)
 		switch apiErr.Code {
 		case 404:
-			return fmt.Errorf("%w: %s", ErrNotFound, apiErr.Message)
+			return fmt.Errorf("%w: %s", ErrNotFound, detail)
 		case 409:
-			return fmt.Errorf("%w: %s", ErrConflict, apiErr.Message)
+			return fmt.Errorf("%w: %s", ErrConflict, detail)
 		case 403:
-			return fmt.Errorf("%w: %s", ErrPermission, apiErr.Message)
+			return fmt.Errorf("%w: %s", ErrPermission, detail)
 		case 429:
-			return fmt.Errorf("%w: %s", ErrRateLimit, apiErr.Message)
+			return fmt.Errorf("%w: %s", ErrRateLimit, detail)
 		case 400:
-			return fmt.Errorf("%w: %s", ErrInvalidRequest, apiErr.Message)
+			return fmt.Errorf("%w: %s", ErrInvalidRequest, detail)
+		default:
+			return fmt.Errorf("API error %d: %s", apiErr.Code, detail)
 		}
 	}
 
