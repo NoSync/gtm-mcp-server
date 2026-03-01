@@ -29,21 +29,28 @@ const (
 // Middleware creates HTTP middleware that validates bearer tokens.
 // If a token is expired but has a valid refresh token, it will automatically
 // refresh the token and continue the request transparently.
-func Middleware(store TokenStore, google *GoogleProvider, logger *slog.Logger, baseURL string, accessTokenTTL time.Duration) func(http.Handler) http.Handler {
+// If resolver is non-nil, 401 responses will use dynamically resolved URLs.
+func Middleware(store TokenStore, google *GoogleProvider, logger *slog.Logger, baseURL string, accessTokenTTL time.Duration, resolver *URLResolver) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Resolve the base URL for error responses
+			effectiveURL := baseURL
+			if resolver != nil {
+				effectiveURL = resolver.Resolve(r)
+			}
+
 			// Extract bearer token from Authorization header
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
 				logger.Warn("auth_failed", "reason", "missing_header")
-				unauthorized(w, baseURL, "Missing authorization header")
+				unauthorized(w, effectiveURL, "Missing authorization header")
 				return
 			}
 
 			parts := strings.SplitN(authHeader, " ", 2)
 			if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
 				logger.Warn("auth_failed", "reason", "invalid_format")
-				unauthorized(w, baseURL, "Invalid authorization header format")
+				unauthorized(w, effectiveURL, "Invalid authorization header format")
 				return
 			}
 
@@ -56,12 +63,12 @@ func Middleware(store TokenStore, google *GoogleProvider, logger *slog.Logger, b
 					// Attempt auto-refresh
 					tokenInfo, err = tryAutoRefresh(r.Context(), store, google, logger, accessToken, baseURL, accessTokenTTL)
 					if err != nil {
-						unauthorized(w, baseURL, err.Error())
+						unauthorized(w, effectiveURL, err.Error())
 						return
 					}
 				} else {
 					logger.Warn("auth_failed", "reason", "token_not_found", "token_prefix", truncateToken(accessToken))
-					unauthorized(w, baseURL, "Invalid token")
+					unauthorized(w, effectiveURL, "Invalid token")
 					return
 				}
 			}

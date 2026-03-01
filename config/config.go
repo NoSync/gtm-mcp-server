@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -28,6 +29,10 @@ type Config struct {
 
 	// Token configuration
 	AccessTokenTTL time.Duration
+
+	// AllowedHosts lists additional trusted hostnames for dynamic base URL resolution.
+	// Enables Docker-to-Docker contexts where the server is reached via internal aliases.
+	AllowedHosts []string
 }
 
 // Load reads configuration from environment variables.
@@ -39,14 +44,15 @@ func Load() (*Config, error) {
 	_ = godotenv.Overload(".env.local")
 
 	cfg := &Config{
-		Port:              getEnvInt("PORT", 8081),
-		BaseURL:           getEnv("BASE_URL", "http://localhost:8081"),
+		Port:              getEnvInt("PORT", 8080),
+		BaseURL:           getEnv("BASE_URL", "http://localhost:8080"),
 		GoogleClientID:    getEnv("GOOGLE_CLIENT_ID", ""),
 		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
 		GoogleRedirectURI: getEnv("GOOGLE_REDIRECT_URI", ""),
 		JWTSecret:         getEnv("JWT_SECRET", ""),
 		LogLevel:          getEnv("LOG_LEVEL", "info"),
 		AccessTokenTTL:    getEnvDuration("ACCESS_TOKEN_TTL", 8*time.Hour),
+		AllowedHosts:      getEnvList("ALLOWED_HOSTS"),
 	}
 
 	// Validation is deferred to when auth is actually needed
@@ -84,6 +90,19 @@ func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 		}
 	}
 	return defaultValue
+}
+
+func getEnvList(key string) []string {
+	if value := os.Getenv(key); value != "" {
+		var hosts []string
+		for _, h := range strings.Split(value, ",") {
+			if h = strings.TrimSpace(h); h != "" {
+				hosts = append(hosts, h)
+			}
+		}
+		return hosts
+	}
+	return nil
 }
 
 func getEnvInt(key string, defaultValue int) int {

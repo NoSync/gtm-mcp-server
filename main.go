@@ -21,7 +21,7 @@ import (
 
 const (
 	serverName    = "gtm-mcp-server"
-	serverVersion = "1.2.0"
+	serverVersion = "1.4.0"
 )
 
 func main() {
@@ -77,13 +77,21 @@ func main() {
 		})
 	})
 
+	// URL resolver for dynamic base URL resolution in Docker-to-Docker contexts.
+	// Only resolves dynamically for hosts in the allowlist; falls back to cfg.BaseURL.
+	var urlResolver *auth.URLResolver
+	if len(cfg.AllowedHosts) > 0 {
+		urlResolver = auth.NewURLResolver(cfg.BaseURL, cfg.AllowedHosts)
+		logger.Info("dynamic URL resolution enabled", "allowed_hosts", cfg.AllowedHosts)
+	}
+
 	// OAuth metadata endpoints (always served, no auth required)
 	// RFC 9728: Protected Resource Metadata - tells clients where to find the authorization server
 	mux.HandleFunc("GET /.well-known/oauth-protected-resource",
-		auth.ProtectedResourceMetadataHandler(cfg.BaseURL, cfg.BaseURL))
+		auth.ProtectedResourceMetadataHandler(cfg.BaseURL, cfg.BaseURL, urlResolver))
 
 	// RFC 8414: Authorization Server Metadata - tells clients about OAuth endpoints
-	mux.HandleFunc("GET /.well-known/oauth-authorization-server", auth.MetadataHandler(cfg.BaseURL))
+	mux.HandleFunc("GET /.well-known/oauth-authorization-server", auth.MetadataHandler(cfg.BaseURL, urlResolver))
 
 	// Check if OAuth is configured
 	var authServer *auth.Server
@@ -112,7 +120,7 @@ func main() {
 
 		// MCP endpoint with REQUIRED auth middleware and body size limit
 		// Returns 401 if no valid Bearer token - triggers Claude's OAuth flow
-		authMiddleware := auth.Middleware(tokenStore, googleProvider, logger, cfg.BaseURL, cfg.AccessTokenTTL)
+		authMiddleware := auth.Middleware(tokenStore, googleProvider, logger, cfg.BaseURL, cfg.AccessTokenTTL, urlResolver)
 		mux.Handle("/", authMiddleware(maxBytesHandler(5<<20, mcpHandler)))
 
 		logger.Info("OAuth configured",

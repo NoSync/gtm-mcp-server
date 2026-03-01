@@ -34,13 +34,23 @@ func NewOAuthMetadata(baseURL string) *OAuthMetadata {
 }
 
 // MetadataHandler returns an HTTP handler for /.well-known/oauth-authorization-server.
-func MetadataHandler(baseURL string) http.HandlerFunc {
-	metadata := NewOAuthMetadata(baseURL)
+// If resolver is non-nil, the base URL is resolved dynamically per-request
+// (validated against allowed hosts). Otherwise, baseURL is used statically.
+func MetadataHandler(baseURL string, resolver *URLResolver) http.HandlerFunc {
+	// Pre-compute for the static case
+	staticMetadata := NewOAuthMetadata(baseURL)
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
+		}
+
+		metadata := staticMetadata
+		if resolver != nil {
+			if resolved := resolver.Resolve(r); resolved != baseURL {
+				metadata = NewOAuthMetadata(resolved)
+			}
 		}
 
 		w.Header().Set("Content-Type", "application/json")

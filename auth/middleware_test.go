@@ -121,7 +121,7 @@ func TestMiddleware_ValidToken(t *testing.T) {
 	}
 	store.StoreToken(token)
 
-	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour)
+	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour, nil)
 	handler := mw(dummyHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -142,7 +142,7 @@ func TestMiddleware_MissingAuthHeader(t *testing.T) {
 	store := newMockTokenStore()
 	logger := testLogger()
 
-	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour)
+	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour, nil)
 	handler := mw(dummyHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -171,7 +171,7 @@ func TestMiddleware_InvalidFormat(t *testing.T) {
 	store := newMockTokenStore()
 	logger := testLogger()
 
-	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour)
+	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour, nil)
 	handler := mw(dummyHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -189,7 +189,7 @@ func TestMiddleware_TokenNotFound(t *testing.T) {
 	store := newMockTokenStore()
 	logger := testLogger()
 
-	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour)
+	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour, nil)
 	handler := mw(dummyHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -237,7 +237,7 @@ func TestMiddleware_ExpiredToken_AutoRefreshSuccess(t *testing.T) {
 	}
 	store.StoreToken(token)
 
-	mw := Middleware(store, google, logger, "http://localhost:8080", 1*time.Hour)
+	mw := Middleware(store, google, logger, "http://localhost:8080", 1*time.Hour, nil)
 	handler := mw(dummyHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -287,7 +287,7 @@ func TestMiddleware_ExpiredToken_NoRefreshToken(t *testing.T) {
 	}
 	store.StoreToken(token)
 
-	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour)
+	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour, nil)
 	handler := mw(dummyHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -324,7 +324,7 @@ func TestMiddleware_ExpiredToken_ExpiredRefreshToken(t *testing.T) {
 	}
 	store.StoreToken(token)
 
-	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour)
+	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour, nil)
 	handler := mw(dummyHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -369,7 +369,7 @@ func TestMiddleware_ExpiredToken_GoogleRefreshFails(t *testing.T) {
 	}
 	store.StoreToken(token)
 
-	mw := Middleware(store, google, logger, "http://localhost:8080", 1*time.Hour)
+	mw := Middleware(store, google, logger, "http://localhost:8080", 1*time.Hour, nil)
 	handler := mw(dummyHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -443,7 +443,7 @@ func TestMiddleware_ErrorResponseFormat(t *testing.T) {
 	store := newMockTokenStore()
 	logger := testLogger()
 
-	mw := Middleware(store, nil, logger, "https://mcp.gtmeditor.com", 1*time.Hour)
+	mw := Middleware(store, nil, logger, "https://mcp.gtmeditor.com", 1*time.Hour, nil)
 	handler := mw(dummyHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -517,7 +517,7 @@ func TestMiddleware_ContextValues(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := Middleware(store, google, logger, "http://localhost:8080", 1*time.Hour)
+	mw := Middleware(store, google, logger, "http://localhost:8080", 1*time.Hour, nil)
 	handler := mw(captureHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
