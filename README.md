@@ -5,12 +5,13 @@
 [![MCP](https://img.shields.io/badge/MCP-Model_Context_Protocol-8A2BE2)](https://modelcontextprotocol.io)
 [![Claude](https://img.shields.io/badge/Claude-Compatible-D97757?logo=anthropic&logoColor=white)](https://claude.ai)
 [![ChatGPT](https://img.shields.io/badge/ChatGPT-Compatible-74aa9c?logo=openai&logoColor=white)](https://chatgpt.com)
+[![Gemini](https://img.shields.io/badge/Gemini_CLI-Compatible-4285F4?logo=google&logoColor=white)](https://geminicli.com)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://github.com/paolobietolini/gtm-mcp-server)
 [![GitHub stars](https://img.shields.io/github/stars/paolobietolini/gtm-mcp-server?style=social)](https://github.com/paolobietolini/gtm-mcp-server)
 
 **Let AI manage your Google Tag Manager containers.**
 
-Create tags, audit configurations, generate tracking plans, and publish changes, all through natural conversation with Claude or ChatGPT.
+Create tags, audit configurations, generate tracking plans, and publish changes, all through natural conversation with Claude, ChatGPT, or Gemini.
 
 **URL:** `https://mcp.gtmeditor.com`
 
@@ -70,6 +71,12 @@ claude mcp add -t http gtm https://mcp.gtmeditor.com
 1. Go to [OpenAI Apps Platform](https://platform.openai.com/apps)
 2. Add an MCP integration with URL: `https://mcp.gtmeditor.com`
 3. Authorize with your Google account
+
+### Gemini CLI
+
+```bash
+gemini mcp add --transport http --url https://mcp.gtmeditor.com gtm
+```
 
 ---
 
@@ -220,6 +227,16 @@ docker compose up -d
 # Add to Claude
 claude mcp add -t http gtm http://localhost:8080
 ```
+
+#### Docker-to-Docker
+
+If another container needs to reach the MCP server via an internal Docker network alias, add `ALLOWED_HOSTS` to your `.env`:
+
+```bash
+ALLOWED_HOSTS=gtm-mcp:8080
+```
+
+This enables dynamic URL resolution for trusted internal hostnames while keeping the server secure against host header injection.
 
 ### Google Cloud Setup
 
