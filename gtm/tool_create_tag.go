@@ -93,6 +93,6 @@ func registerCreateTag(server *mcp.Server) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "create_tag",
-		Description: "Create a new tag in a GTM workspace. Requires at least one firing trigger ID.",
+		Description: "Create a new tag in a GTM workspace. Requires at least one firing trigger ID. Always call get_tag_templates before creating GA4 tags",
 	}, handler)
 }

@@ -66,6 +66,6 @@ func registerCreateVariable(server *mcp.Server) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "create_variable",
-		Description: "Create a new variable in a GTM workspace. Common types: c (Constant), v (Data Layer), k (Cookie), jsm (Custom JavaScript), u (URL).",
+		Description: "Create a new variable in a GTM workspace. Common types: c (Constant), v (Data Layer), k (Cookie), jsm (Custom JavaScript), u (URL). For DLV variables, omit defaultValue entirely or use type template, never type integer with empty value",
 	}, handler)
 }
