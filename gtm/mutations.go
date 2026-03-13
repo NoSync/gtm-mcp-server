@@ -22,6 +22,7 @@ func (c *Client) CreateTag(ctx context.Context, accountID, containerID, workspac
 		TagFiringOption:   input.TagFiringOption,
 		SetupTag:          toAPISetupTags(input.SetupTag),
 		TeardownTag:       toAPITeardownTags(input.TeardownTag),
+		ConsentSettings:   toAPIConsentSettings(input.ConsentStatus, input.ConsentTypes),
 	}
 
 	result, err := c.Service.Accounts.Containers.Workspaces.Tags.Create(parent, tag).Context(ctx).Do()
@@ -57,6 +58,12 @@ func (c *Client) UpdateTag(ctx context.Context, path string, input *TagInput) (*
 		teardownTags = current.TeardownTag
 	}
 
+	// Preserve existing consent settings when not provided in input
+	consentSettings := toAPIConsentSettings(input.ConsentStatus, input.ConsentTypes)
+	if consentSettings == nil && !input.HasConsentSettings {
+		consentSettings = current.ConsentSettings
+	}
+
 	// Build updated tag with fingerprint
 	tag := &tagmanager.Tag{
 		Name:              input.Name,
@@ -69,6 +76,7 @@ func (c *Client) UpdateTag(ctx context.Context, path string, input *TagInput) (*
 		TagFiringOption:   input.TagFiringOption,
 		SetupTag:          setupTags,
 		TeardownTag:       teardownTags,
+		ConsentSettings:   consentSettings,
 		Fingerprint:       current.Fingerprint,
 	}
 
@@ -315,6 +323,30 @@ func toAPIParam(p *Parameter) *tagmanager.Parameter {
 		param.Map = toAPIParams(p.Map)
 	}
 	return param
+}
+
+func toAPIConsentSettings(status string, types []string) *tagmanager.TagConsentSetting {
+	if status == "" {
+		return nil
+	}
+	cs := &tagmanager.TagConsentSetting{
+		ConsentStatus:   status,
+		ForceSendFields: []string{"ConsentStatus"},
+	}
+	if status == "needed" && len(types) > 0 {
+		list := make([]*tagmanager.Parameter, len(types))
+		for i, t := range types {
+			list[i] = &tagmanager.Parameter{
+				Type:  "template",
+				Value: t,
+			}
+		}
+		cs.ConsentType = &tagmanager.Parameter{
+			Type: "list",
+			List: list,
+		}
+	}
+	return cs
 }
 
 func toAPISetupTags(tags []SetupTagInput) []*tagmanager.SetupTag {

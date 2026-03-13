@@ -13,17 +13,24 @@ type TagSequenceRef struct {
 	StopOnFailure      bool   `json:"stopOnFailure,omitempty"`
 }
 
+// TagConsentSettings represents consent configuration for a tag.
+type TagConsentSettings struct {
+	ConsentStatus string   `json:"consentStatus"`           // "notSet", "notNeeded", "needed"
+	ConsentTypes  []string `json:"consentTypes,omitempty"`  // e.g. ["ad_storage", "analytics_storage"]
+}
+
 // Tag is a simplified representation of a GTM tag.
 type Tag struct {
-	TagID             string           `json:"tagId"`
-	Name              string           `json:"name"`
-	Type              string           `json:"type"`
-	FiringTriggerID   []string         `json:"firingTriggerId,omitempty"`
-	BlockingTriggerID []string         `json:"blockingTriggerId,omitempty"`
-	SetupTag          []TagSequenceRef `json:"setupTag,omitempty"`
-	TeardownTag       []TagSequenceRef `json:"teardownTag,omitempty"`
-	Paused            bool             `json:"paused,omitempty"`
-	Path              string           `json:"path"`
+	TagID             string              `json:"tagId"`
+	Name              string              `json:"name"`
+	Type              string              `json:"type"`
+	FiringTriggerID   []string            `json:"firingTriggerId,omitempty"`
+	BlockingTriggerID []string            `json:"blockingTriggerId,omitempty"`
+	SetupTag          []TagSequenceRef    `json:"setupTag,omitempty"`
+	TeardownTag       []TagSequenceRef    `json:"teardownTag,omitempty"`
+	ConsentSettings   *TagConsentSettings `json:"consentSettings,omitempty"`
+	Paused            bool                `json:"paused,omitempty"`
+	Path              string              `json:"path"`
 }
 
 // ListTags returns all tags in a workspace.
@@ -85,6 +92,19 @@ func toTag(t *tagmanager.Tag) Tag {
 			TagName:       s.TagName,
 			StopOnFailure: s.StopTeardownOnFailure,
 		})
+	}
+	if t.ConsentSettings != nil && t.ConsentSettings.ConsentStatus != "" {
+		cs := &TagConsentSettings{
+			ConsentStatus: t.ConsentSettings.ConsentStatus,
+		}
+		if t.ConsentSettings.ConsentType != nil {
+			for _, p := range t.ConsentSettings.ConsentType.List {
+				if p.Value != "" {
+					cs.ConsentTypes = append(cs.ConsentTypes, p.Value)
+				}
+			}
+		}
+		tag.ConsentSettings = cs
 	}
 	return tag
 }

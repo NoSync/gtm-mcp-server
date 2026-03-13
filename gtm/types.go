@@ -36,6 +36,9 @@ type TagInput struct {
 	TeardownTag        []TeardownTagInput `json:"teardownTag,omitempty"`
 	ClearSetupTag      bool               `json:"-"` // When true, explicitly clear setup tags
 	ClearTeardownTag   bool               `json:"-"` // When true, explicitly clear teardown tags
+	ConsentStatus      string             `json:"consentStatus,omitempty"`  // "notSet", "notNeeded", "needed"
+	ConsentTypes       []string           `json:"consentTypes,omitempty"`   // e.g. ["ad_storage", "analytics_storage"]
+	HasConsentSettings bool               `json:"-"` // When true, consent settings were explicitly provided
 }
 
 // TriggerInput represents input for creating/updating a trigger.

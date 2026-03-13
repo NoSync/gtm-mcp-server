@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -20,6 +21,8 @@ type CreateTagInput struct {
 	ParametersJSON     string   `json:"parametersJson,omitempty" jsonschema:"description:Tag parameters as JSON array (optional). Each parameter: {type, key, value} or {type, key, list/map}"`
 	SetupTagJSON       string   `json:"setupTagJson,omitempty" jsonschema:"description:Setup tag sequencing as JSON array (optional). Each element: {tagName: string, stopOnSetupFailure: bool}. The setup tag fires before this tag."`
 	TeardownTagJSON    string   `json:"teardownTagJson,omitempty" jsonschema:"description:Teardown tag sequencing as JSON array (optional). Each element: {tagName: string, stopTeardownOnFailure: bool}. The teardown tag fires after this tag."`
+	ConsentStatus      string   `json:"consentStatus,omitempty" jsonschema:"description:Consent status: notSet (default)\\, notNeeded (no consent required)\\, needed (requires consent types to be granted before firing)."`
+	ConsentTypes       string   `json:"consentTypes,omitempty" jsonschema:"description:Comma-separated consent types when consentStatus is needed (e.g. ad_storage\\,analytics_storage\\,ad_user_data\\,ad_personalization). Ignored when consentStatus is notSet or notNeeded."`
 	Notes              string   `json:"notes,omitempty" jsonschema:"description:Tag notes (optional)"`
 	Paused             bool     `json:"paused,omitempty" jsonschema:"description:Whether tag is paused (optional)"`
 }
@@ -67,6 +70,16 @@ func registerCreateTag(server *mcp.Server) {
 			}
 		}
 
+		// Parse consent types if provided
+		var consentTypes []string
+		if input.ConsentTypes != "" {
+			for _, t := range strings.Split(input.ConsentTypes, ",") {
+				if trimmed := strings.TrimSpace(t); trimmed != "" {
+					consentTypes = append(consentTypes, trimmed)
+				}
+			}
+		}
+
 		tagInput := &TagInput{
 			Name:              input.Name,
 			Type:              input.Type,
@@ -77,6 +90,8 @@ func registerCreateTag(server *mcp.Server) {
 			Paused:            input.Paused,
 			SetupTag:          setupTags,
 			TeardownTag:       teardownTags,
+			ConsentStatus:     input.ConsentStatus,
+			ConsentTypes:      consentTypes,
 		}
 
 		tag, err := wc.Client.CreateTag(ctx, wc.AccountID, wc.ContainerID, wc.WorkspaceID, tagInput)
