@@ -351,6 +351,14 @@ func toAPIConditions(conditions []Condition) []*tagmanager.Condition {
 	}
 	result := make([]*tagmanager.Condition, len(conditions))
 	for i, c := range conditions {
+		// Transform doesNotContain → contains + negate.
+		// The GTM API does not accept doesNotContain directly; the GTM UI
+		// represents "does not contain" as a contains condition with a negate parameter.
+		if c.Type == "doesNotContain" {
+			c.Type = "contains"
+			c.Negate = true
+		}
+
 		params := toAPIParams(c.Parameter)
 		if c.Negate {
 			params = append(params, &tagmanager.Parameter{

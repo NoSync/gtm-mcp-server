@@ -52,7 +52,7 @@ type TriggerInput struct {
 
 // Condition represents a filter condition for triggers.
 type Condition struct {
-	Type      string      `json:"type"` // "equals", "contains", "startsWith", etc.
+	Type      string      `json:"type"` // "equals", "contains", "doesNotContain", "startsWith", "endsWith", "matchRegex", etc.
 	Negate    bool        `json:"negate,omitempty"`
 	Parameter []Parameter `json:"parameter"`
 }

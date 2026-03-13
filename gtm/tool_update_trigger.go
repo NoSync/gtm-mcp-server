@@ -16,9 +16,9 @@ type UpdateTriggerInput struct {
 	TriggerID             string `json:"triggerId" jsonschema:"description:The trigger ID to update"`
 	Name                  string `json:"name" jsonschema:"description:Trigger name"`
 	Type                  string `json:"type" jsonschema:"description:Trigger type (e.g. pageview, customEvent, linkClick, triggerGroup)"`
-	FilterJSON            string `json:"filterJson,omitempty" jsonschema:"description:Filter conditions as JSON array for pageview triggers (optional)"`
-	AutoEventFilterJSON   string `json:"autoEventFilterJson,omitempty" jsonschema:"description:Auto-event filter as JSON array for click/form triggers (optional)"`
-	CustomEventFilterJSON string `json:"customEventFilterJson,omitempty" jsonschema:"description:Custom event filter as JSON array for customEvent triggers (optional)"`
+	FilterJSON            string `json:"filterJson,omitempty" jsonschema:"description:Filter conditions as JSON array for pageview triggers. Condition types: equals\\, contains\\, doesNotContain\\, startsWith\\, endsWith\\, matchRegex. Each condition has type and parameter array with arg0 (variable) and arg1 (value). (optional)"`
+	AutoEventFilterJSON   string `json:"autoEventFilterJson,omitempty" jsonschema:"description:Auto-event filter as JSON array for click/form triggers. Condition types: equals\\, contains\\, doesNotContain\\, startsWith\\, endsWith\\, matchRegex. (optional)"`
+	CustomEventFilterJSON string `json:"customEventFilterJson,omitempty" jsonschema:"description:Custom event filter as JSON array for customEvent triggers. Condition types: equals\\, contains\\, doesNotContain\\, startsWith\\, endsWith\\, matchRegex. (optional)"`
 	ParameterJSON         string `json:"parameterJson,omitempty" jsonschema:"description:Trigger parameters as JSON array. For triggerGroup type use: [{key: triggerIds, type: list, list: [{type: triggerReference, value: triggerId}, ...]}]"`
 	Notes                 string `json:"notes,omitempty" jsonschema:"description:Trigger notes (optional)"`
 }
@@ -105,6 +105,6 @@ func registerUpdateTrigger(server *mcp.Server) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "update_trigger",
-		Description: "Update an existing trigger. For trigger groups, use parameterJson with format: [{\"key\": \"triggerIds\", \"type\": \"list\", \"list\": [{\"type\": \"triggerReference\", \"value\": \"<triggerId>\"}, ...]}]",
+		Description: "Update an existing trigger. Filter condition types: equals, contains, doesNotContain, startsWith, endsWith, matchRegex. The doesNotContain type is automatically transformed to a negated contains condition for the GTM API. For trigger groups, use parameterJson with format: [{\"key\": \"triggerIds\", \"type\": \"list\", \"list\": [{\"type\": \"triggerReference\", \"value\": \"<triggerId>\"}, ...]}]",
 	}, handler)
 }
