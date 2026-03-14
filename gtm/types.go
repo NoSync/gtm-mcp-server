@@ -29,11 +29,15 @@ type TagInput struct {
 	FiringTriggerId    []string           `json:"firingTriggerId"`
 	BlockingTriggerId  []string           `json:"blockingTriggerId,omitempty"`
 	Parameter          []Parameter        `json:"parameter,omitempty"`
+	HasParameter       bool               `json:"-"` // When true, Parameter was explicitly provided
 	Notes              string             `json:"notes,omitempty"`
 	Paused             bool               `json:"paused,omitempty"`
+	HasPaused          bool               `json:"-"` // When true, Paused was explicitly provided
 	TagFiringOption    string             `json:"tagFiringOption,omitempty"`
 	SetupTag           []SetupTagInput    `json:"setupTag,omitempty"`
 	TeardownTag        []TeardownTagInput `json:"teardownTag,omitempty"`
+	HasSetupTag        bool               `json:"-"` // When true, SetupTag was explicitly provided
+	HasTeardownTag     bool               `json:"-"` // When true, TeardownTag was explicitly provided
 	ClearSetupTag      bool               `json:"-"` // When true, explicitly clear setup tags
 	ClearTeardownTag   bool               `json:"-"` // When true, explicitly clear teardown tags
 	ConsentStatus      string             `json:"consentStatus,omitempty"`  // "notSet", "notNeeded", "needed"

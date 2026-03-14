@@ -39,48 +39,66 @@ func (c *Client) CreateTag(ctx context.Context, accountID, containerID, workspac
 	}, nil
 }
 
-// UpdateTag updates an existing tag. It fetches the current tag first to get the fingerprint.
+// UpdateTag updates an existing tag. It fetches the current tag first and merges
+// only the fields that were explicitly provided, preserving everything else.
+// The GTM API uses PUT (full replacement), so we must send the complete tag.
 func (c *Client) UpdateTag(ctx context.Context, path string, input *TagInput) (*CreatedTag, error) {
-	// Get current tag for fingerprint
+	// Get current tag — used as the base for the merged update
 	current, err := c.Service.Accounts.Containers.Workspaces.Tags.Get(path).Context(ctx).Do()
 	if err != nil {
 		return nil, mapGoogleError(err)
 	}
 
-	// Preserve existing setup/teardown tags when not provided in input.
-	// If ClearSetupTag/ClearTeardownTag is set, explicitly clear them (empty array was passed).
-	setupTags := toAPISetupTags(input.SetupTag)
-	if setupTags == nil && !input.ClearSetupTag {
-		setupTags = current.SetupTag
+	// Start from the current tag and selectively override provided fields
+	tag := current
+
+	if input.Name != "" {
+		tag.Name = input.Name
 	}
-	teardownTags := toAPITeardownTags(input.TeardownTag)
-	if teardownTags == nil && !input.ClearTeardownTag {
-		teardownTags = current.TeardownTag
+	if input.Type != "" {
+		tag.Type = input.Type
+	}
+	if input.FiringTriggerId != nil {
+		tag.FiringTriggerId = input.FiringTriggerId
+	}
+	if input.BlockingTriggerId != nil {
+		tag.BlockingTriggerId = input.BlockingTriggerId
+	}
+	if input.HasParameter {
+		tag.Parameter = toAPIParams(input.Parameter)
+	}
+	if input.Notes != "" {
+		tag.Notes = input.Notes
+	}
+	if input.HasPaused {
+		tag.Paused = input.Paused
+	}
+	if input.TagFiringOption != "" {
+		tag.TagFiringOption = input.TagFiringOption
 	}
 
-	// Preserve existing consent settings when not provided in input
-	consentSettings := toAPIConsentSettings(input.ConsentStatus, input.ConsentTypes)
-	if consentSettings == nil && !input.HasConsentSettings {
-		consentSettings = current.ConsentSettings
+	// Setup/teardown tag handling
+	if input.HasSetupTag {
+		if input.ClearSetupTag {
+			tag.SetupTag = []*tagmanager.SetupTag{}
+		} else {
+			tag.SetupTag = toAPISetupTags(input.SetupTag)
+		}
+	}
+	if input.HasTeardownTag {
+		if input.ClearTeardownTag {
+			tag.TeardownTag = []*tagmanager.TeardownTag{}
+		} else {
+			tag.TeardownTag = toAPITeardownTags(input.TeardownTag)
+		}
 	}
 
-	// Build updated tag with fingerprint
-	tag := &tagmanager.Tag{
-		Name:              input.Name,
-		Type:              input.Type,
-		FiringTriggerId:   input.FiringTriggerId,
-		BlockingTriggerId: input.BlockingTriggerId,
-		Parameter:         toAPIParams(input.Parameter),
-		Notes:             input.Notes,
-		Paused:            input.Paused,
-		TagFiringOption:   input.TagFiringOption,
-		SetupTag:          setupTags,
-		TeardownTag:       teardownTags,
-		ConsentSettings:   consentSettings,
-		Fingerprint:       current.Fingerprint,
+	// Consent settings
+	if input.HasConsentSettings {
+		tag.ConsentSettings = toAPIConsentSettings(input.ConsentStatus, input.ConsentTypes)
 	}
 
-	result, err := c.Service.Accounts.Containers.Workspaces.Tags.Update(path, tag).Context(ctx).Do()
+	result, err := c.Service.Accounts.Containers.Workspaces.Tags.Update(path, tag).Fingerprint(current.Fingerprint).Context(ctx).Do()
 	if err != nil {
 		return nil, mapGoogleError(err)
 	}

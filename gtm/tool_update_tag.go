@@ -15,17 +15,17 @@ type UpdateTagInput struct {
 	ContainerID        string   `json:"containerId" jsonschema:"description:The GTM container ID"`
 	WorkspaceID        string   `json:"workspaceId" jsonschema:"description:The GTM workspace ID"`
 	TagID              string   `json:"tagId" jsonschema:"description:The tag ID to update"`
-	Name               string   `json:"name" jsonschema:"description:Tag name"`
-	Type               string   `json:"type" jsonschema:"description:Tag type"`
-	FiringTriggerIDs   []string `json:"firingTriggerIds" jsonschema:"description:Array of trigger IDs that fire this tag"`
-	BlockingTriggerIDs []string `json:"blockingTriggerIds,omitempty" jsonschema:"description:Array of trigger IDs that block this tag (optional)"`
-	ParametersJSON     string   `json:"parametersJson,omitempty" jsonschema:"description:Tag parameters as JSON array (optional)"`
-	SetupTagJSON       string   `json:"setupTagJson,omitempty" jsonschema:"description:Setup tag sequencing as JSON array (optional). Each element: {tagName: string, stopOnSetupFailure: bool}. The setup tag fires before this tag."`
-	TeardownTagJSON    string   `json:"teardownTagJson,omitempty" jsonschema:"description:Teardown tag sequencing as JSON array (optional). Each element: {tagName: string, stopTeardownOnFailure: bool}. The teardown tag fires after this tag."`
+	Name               string   `json:"name,omitempty" jsonschema:"description:Tag name. If omitted\\, existing name is preserved."`
+	Type               string   `json:"type,omitempty" jsonschema:"description:Tag type. If omitted\\, existing type is preserved."`
+	FiringTriggerIDs   []string `json:"firingTriggerIds,omitempty" jsonschema:"description:Array of trigger IDs that fire this tag. If omitted\\, existing triggers are preserved."`
+	BlockingTriggerIDs []string `json:"blockingTriggerIds,omitempty" jsonschema:"description:Array of trigger IDs that block this tag. If omitted\\, existing blocking triggers are preserved."`
+	ParametersJSON     string   `json:"parametersJson,omitempty" jsonschema:"description:Tag parameters as JSON array. If omitted\\, existing parameters (pixel IDs\\, measurement IDs\\, etc.) are preserved."`
+	SetupTagJSON       string   `json:"setupTagJson,omitempty" jsonschema:"description:Setup tag sequencing as JSON array. Each element: {tagName: string\\, stopOnSetupFailure: bool}. Pass [] to clear. If omitted\\, existing setup tags are preserved."`
+	TeardownTagJSON    string   `json:"teardownTagJson,omitempty" jsonschema:"description:Teardown tag sequencing as JSON array. Each element: {tagName: string\\, stopTeardownOnFailure: bool}. Pass [] to clear. If omitted\\, existing teardown tags are preserved."`
 	ConsentStatus      string   `json:"consentStatus,omitempty" jsonschema:"description:Consent status: notSet (default/clear)\\, notNeeded (no consent required)\\, needed (requires consent types to be granted before firing). If omitted\\, existing consent settings are preserved."`
 	ConsentTypes       string   `json:"consentTypes,omitempty" jsonschema:"description:Comma-separated consent types when consentStatus is needed (e.g. ad_storage\\,analytics_storage\\,ad_user_data\\,ad_personalization). Ignored when consentStatus is notSet or notNeeded."`
-	Notes              string   `json:"notes,omitempty" jsonschema:"description:Tag notes (optional)"`
-	Paused             bool     `json:"paused,omitempty" jsonschema:"description:Whether tag is paused (optional)"`
+	Notes              string   `json:"notes,omitempty" jsonschema:"description:Tag notes. If omitted\\, existing notes are preserved."`
+	Paused             *bool    `json:"paused,omitempty" jsonschema:"description:Whether tag is paused. If omitted\\, existing paused state is preserved."`
 }
 
 // UpdateTagOutput is the output for update_tag tool.
@@ -47,16 +47,13 @@ func registerUpdateTag(server *mcp.Server) {
 			return nil, UpdateTagOutput{}, fmt.Errorf("tag ID is required")
 		}
 
-		// Validate tag input
-		if err := ValidateTagInput(input.Name, input.Type, input.FiringTriggerIDs); err != nil {
-			return nil, UpdateTagOutput{}, err
-		}
-
 		path := BuildTagPath(wc.AccountID, wc.ContainerID, wc.WorkspaceID, input.TagID)
 
 		// Parse parameters JSON if provided
 		var params []Parameter
+		var hasParams bool
 		if input.ParametersJSON != "" {
+			hasParams = true
 			if err := json.Unmarshal([]byte(input.ParametersJSON), &params); err != nil {
 				return nil, UpdateTagOutput{}, err
 			}
@@ -64,8 +61,10 @@ func registerUpdateTag(server *mcp.Server) {
 
 		// Parse setup tag JSON if provided
 		var setupTags []SetupTagInput
+		var hasSetupTag bool
 		var clearSetup bool
 		if input.SetupTagJSON != "" {
+			hasSetupTag = true
 			if err := json.Unmarshal([]byte(input.SetupTagJSON), &setupTags); err != nil {
 				return nil, UpdateTagOutput{}, fmt.Errorf("invalid setupTagJson: %w", err)
 			}
@@ -76,8 +75,10 @@ func registerUpdateTag(server *mcp.Server) {
 
 		// Parse teardown tag JSON if provided
 		var teardownTags []TeardownTagInput
+		var hasTeardownTag bool
 		var clearTeardown bool
 		if input.TeardownTagJSON != "" {
+			hasTeardownTag = true
 			if err := json.Unmarshal([]byte(input.TeardownTagJSON), &teardownTags); err != nil {
 				return nil, UpdateTagOutput{}, fmt.Errorf("invalid teardownTagJson: %w", err)
 			}
@@ -102,10 +103,14 @@ func registerUpdateTag(server *mcp.Server) {
 			FiringTriggerId:    input.FiringTriggerIDs,
 			BlockingTriggerId:  input.BlockingTriggerIDs,
 			Parameter:          params,
+			HasParameter:       hasParams,
 			Notes:              input.Notes,
-			Paused:             input.Paused,
+			Paused:             input.Paused != nil && *input.Paused,
+			HasPaused:          input.Paused != nil,
 			SetupTag:           setupTags,
 			TeardownTag:        teardownTags,
+			HasSetupTag:        hasSetupTag,
+			HasTeardownTag:     hasTeardownTag,
 			ClearSetupTag:      clearSetup,
 			ClearTeardownTag:   clearTeardown,
 			ConsentStatus:      input.ConsentStatus,
@@ -127,6 +132,6 @@ func registerUpdateTag(server *mcp.Server) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "update_tag",
-		Description: "Update an existing tag. Automatically handles fingerprint for concurrency control.",
+		Description: "Update an existing tag. Only provided fields are changed — all other fields (parameters, triggers, consent, etc.) are preserved from the existing tag. Automatically handles fingerprint for concurrency control.",
 	}, handler)
 }
