@@ -3,8 +3,6 @@ package auth
 import (
 	"encoding/json"
 	"net/http"
-	"net/url"
-	"strings"
 	"time"
 )
 
@@ -112,25 +110,9 @@ func (s *Server) registrationError(w http.ResponseWriter, errCode, errDesc strin
 }
 
 // isValidDCRRedirectURI validates redirect URIs for Dynamic Client Registration.
-// Per RFC 7591, we accept any valid HTTPS URI, plus localhost for development.
-// This is more permissive than the hardcoded list used for non-DCR clients.
+// Accepts HTTPS, custom schemes (e.g. cursor://, vscode://) per RFC 8252, and
+// localhost for development. Blocks javascript/data URIs and plaintext http
+// to non-localhost hosts.
 func isValidDCRRedirectURI(uri string) bool {
-	parsed, err := url.Parse(uri)
-	if err != nil {
-		return false
-	}
-
-	// Must have a scheme and host
-	if parsed.Scheme == "" || parsed.Host == "" {
-		return false
-	}
-
-	// Allow localhost for development (http or https)
-	host := strings.Split(parsed.Host, ":")[0] // Remove port if present
-	if host == "localhost" || host == "127.0.0.1" {
-		return parsed.Scheme == "http" || parsed.Scheme == "https"
-	}
-
-	// For all other hosts, require HTTPS
-	return parsed.Scheme == "https"
+	return isValidRedirectURI(uri)
 }
