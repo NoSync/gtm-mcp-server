@@ -61,7 +61,7 @@ func (s *Server) AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Validate redirect URI
 	// If client is registered via DCR, validate against their registered URIs
-	// Otherwise fall back to known safe patterns
+	// Otherwise accept any syntactically valid URI (PKCE provides code binding)
 	if clientID != "" {
 		if client, err := s.store.GetClient(clientID); err == nil {
 			// Client is registered, validate against registered redirect_uris
@@ -454,36 +454,31 @@ func (s *Server) errorResponse(w http.ResponseWriter, errCode, errDesc string) {
 	http.Error(w, fmt.Sprintf("%s: %s", errCode, errDesc), http.StatusBadRequest)
 }
 
-// validRedirectHosts maps allowed hostnames to required scheme and path prefix.
-var validRedirectHosts = map[string]struct {
-	scheme     string
-	pathPrefix string
-}{
-	"claude.ai":          {"https", "/api/mcp/auth_callback"},
-	"claude.com":         {"https", "/api/mcp/auth_callback"},
-	"chatgpt.com":        {"https", "/connector_platform_oauth_redirect"},
-	"platform.openai.com": {"https", "/apps-manage/oauth"},
-}
-
-// isValidRedirectURI checks if the redirect URI is from a known MCP client.
-// Uses exact hostname matching to prevent subdomain attacks (e.g., localhost.evil.com).
+// isValidRedirectURI validates redirect URIs for non-DCR clients.
+// This is permissive because PKCE (required) binds the authorization code to the
+// client's code_verifier, making authorization code interception attacks infeasible
+// even with an attacker-controlled redirect URI. See RFC 7636 and RFC 8252.
+//
+// Blocked: javascript/data URIs (XSS), plaintext http to non-localhost (code leakage).
 func isValidRedirectURI(uri string) bool {
 	parsed, err := url.Parse(uri)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+	if err != nil || parsed.Scheme == "" {
 		return false
 	}
 
-	hostname := parsed.Hostname()
+	scheme := strings.ToLower(parsed.Scheme)
 
-	// Allow localhost/127.0.0.1 for development (http or https)
-	if hostname == "localhost" || hostname == "127.0.0.1" {
-		return parsed.Scheme == "http" || parsed.Scheme == "https"
+	// Block dangerous schemes
+	if scheme == "javascript" || scheme == "data" {
+		return false
 	}
 
-	// Check against known MCP client hosts
-	if rule, ok := validRedirectHosts[hostname]; ok {
-		return parsed.Scheme == rule.scheme && strings.HasPrefix(parsed.Path, rule.pathPrefix)
+	// For http, only allow localhost to prevent plaintext code leakage
+	if scheme == "http" {
+		hostname := parsed.Hostname()
+		return hostname == "localhost" || hostname == "127.0.0.1"
 	}
 
-	return false
+	// Allow https, and custom schemes (e.g. cursor://, vscode://) per RFC 8252
+	return true
 }

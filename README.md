@@ -6,12 +6,13 @@
 [![Claude](https://img.shields.io/badge/Claude-Compatible-D97757?logo=anthropic&logoColor=white)](https://claude.ai)
 [![ChatGPT](https://img.shields.io/badge/ChatGPT-Compatible-74aa9c?logo=openai&logoColor=white)](https://chatgpt.com)
 [![Gemini](https://img.shields.io/badge/Gemini_CLI-Compatible-4285F4?logo=google&logoColor=white)](https://geminicli.com)
+[![Cursor](https://img.shields.io/badge/Cursor-Compatible-00A67E?logo=cursor&logoColor=white)](https://cursor.com)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://github.com/paolobietolini/gtm-mcp-server)
 [![GitHub stars](https://img.shields.io/github/stars/paolobietolini/gtm-mcp-server?style=social)](https://github.com/paolobietolini/gtm-mcp-server)
 
 **Let AI manage your Google Tag Manager containers.**
 
-Create tags, audit configurations, generate tracking plans, and publish changes, all through natural conversation with Claude, ChatGPT, or Gemini.
+Create tags, audit configurations, generate tracking plans, and publish changes, all through natural conversation with Claude, ChatGPT, Gemini, Cursor, and more.
 
 **URL:** `https://mcp.gtmeditor.com`
 
@@ -19,6 +20,7 @@ Create tags, audit configurations, generate tracking plans, and publish changes,
 
 ## Table of Contents
 
+- [Supported AI Clients](#supported-ai-clients)
 - [What Can You Do?](#what-can-you-do)
 - [Quick Start](#quick-start)
 - [Features](#features)
@@ -34,6 +36,20 @@ Create tags, audit configurations, generate tracking plans, and publish changes,
 - [Links](#links)
 - [Author](#author)
 - [License](#license)
+
+---
+
+## Supported AI Clients
+
+| Client | Transport | Auth Flow | Status |
+|--------|-----------|-----------|--------|
+| [Claude](https://claude.ai) (Web & Desktop) | Streamable HTTP | OAuth 2.1 + PKCE | Supported |
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (CLI) | Streamable HTTP | OAuth 2.1 + PKCE | Supported |
+| [ChatGPT](https://chatgpt.com) | Streamable HTTP | OAuth 2.1 + PKCE | Supported |
+| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | Streamable HTTP | OAuth 2.1 + PKCE (DCR) | Supported |
+| [Cursor](https://cursor.com) | Streamable HTTP | OAuth 2.1 + PKCE | Supported |
+
+The server is **client-agnostic** — any MCP client that supports OAuth 2.1 with PKCE over HTTP transport should work out of the box, including clients that use Dynamic Client Registration (RFC 7591) and those that don't.
 
 ---
 
@@ -76,6 +92,24 @@ claude mcp add -t http gtm https://mcp.gtmeditor.com
 
 ```bash
 gemini mcp add --transport http --url https://mcp.gtmeditor.com gtm
+```
+
+### Cursor
+
+1. Open **Settings** > **MCP**
+2. Click **Add new MCP server**
+3. Set type to **URL** and enter: `https://mcp.gtmeditor.com/authorize`
+4. Authorize with your Google account
+
+Or add to your `.cursor/mcp.json`:
+```json
+{
+  "mcpServers": {
+    "gtm": {
+      "url": "https://mcp.gtmeditor.com/authorize"
+    }
+  }
+}
 ```
 
 ---

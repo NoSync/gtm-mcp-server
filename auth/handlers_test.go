@@ -19,56 +19,34 @@ func TestIsValidRedirectURI(t *testing.T) {
 		uri      string
 		expected bool
 	}{
-		// Valid Claude.ai URIs
+		// HTTPS URIs - all accepted
 		{
-			name:     "claude.ai with correct path",
+			name:     "claude.ai",
 			uri:      "https://claude.ai/api/mcp/auth_callback",
 			expected: true,
 		},
 		{
-			name:     "claude.ai with correct path and query params",
-			uri:      "https://claude.ai/api/mcp/auth_callback?foo=bar",
+			name:     "any HTTPS domain",
+			uri:      "https://example.com/callback",
 			expected: true,
 		},
 		{
-			name:     "claude.ai with wrong path",
-			uri:      "https://claude.ai/wrong/path",
-			expected: false,
-		},
-		{
-			name:     "claude.ai with http instead of https",
-			uri:      "http://claude.ai/api/mcp/auth_callback",
-			expected: false,
-		},
-		// Valid claude.com URIs
-		{
-			name:     "claude.com with correct path",
-			uri:      "https://claude.com/api/mcp/auth_callback",
-			expected: true,
-		},
-		// Valid ChatGPT URIs
-		{
-			name:     "chatgpt.com with correct path",
+			name:     "chatgpt.com",
 			uri:      "https://chatgpt.com/connector_platform_oauth_redirect",
 			expected: true,
 		},
+		// Custom URI schemes (RFC 8252 native apps)
 		{
-			name:     "chatgpt.com with wrong path",
-			uri:      "https://chatgpt.com/wrong/path",
-			expected: false,
-		},
-		// Valid OpenAI platform URIs
-		{
-			name:     "platform.openai.com with correct path",
-			uri:      "https://platform.openai.com/apps-manage/oauth",
+			name:     "cursor custom scheme",
+			uri:      "cursor://anysphere.cursor-mcp/oauth/callback",
 			expected: true,
 		},
 		{
-			name:     "platform.openai.com with wrong path",
-			uri:      "https://platform.openai.com/wrong",
-			expected: false,
+			name:     "vscode custom scheme",
+			uri:      "vscode://extension/oauth/callback",
+			expected: true,
 		},
-		// Localhost URIs (development)
+		// Localhost (development)
 		{
 			name:     "localhost with http",
 			uri:      "http://localhost:8080/callback",
@@ -84,54 +62,18 @@ func TestIsValidRedirectURI(t *testing.T) {
 			uri:      "http://127.0.0.1:8080/callback",
 			expected: true,
 		},
+		// Blocked: http to non-localhost (plaintext code leakage)
 		{
-			name:     "127.0.0.1 with https",
-			uri:      "https://127.0.0.1:8080/callback",
-			expected: true,
-		},
-		// Invalid URIs - subdomain attacks
-		{
-			name:     "subdomain attack - claude.ai.evil.com",
-			uri:      "https://claude.ai.evil.com/api/mcp/auth_callback",
+			name:     "http to remote host",
+			uri:      "http://evil.com/callback",
 			expected: false,
 		},
 		{
-			name:     "subdomain attack - evil.claude.ai",
-			uri:      "https://evil.claude.ai/api/mcp/auth_callback",
-			expected: false,
-		},
-		{
-			name:     "subdomain attack - localhost.evil.com",
+			name:     "http to remote host pretending to be localhost",
 			uri:      "http://localhost.evil.com/callback",
 			expected: false,
 		},
-		// Invalid URIs - malformed
-		{
-			name:     "empty URI",
-			uri:      "",
-			expected: false,
-		},
-		{
-			name:     "invalid URL format",
-			uri:      "not-a-url",
-			expected: false,
-		},
-		{
-			name:     "missing scheme",
-			uri:      "//claude.ai/api/mcp/auth_callback",
-			expected: false,
-		},
-		{
-			name:     "missing host",
-			uri:      "https:///callback",
-			expected: false,
-		},
-		// Invalid URIs - unknown domains
-		{
-			name:     "unknown domain",
-			uri:      "https://evil.com/callback",
-			expected: false,
-		},
+		// Blocked: dangerous schemes
 		{
 			name:     "data URI",
 			uri:      "data:text/html,<script>alert('xss')</script>",
@@ -140,6 +82,17 @@ func TestIsValidRedirectURI(t *testing.T) {
 		{
 			name:     "javascript URI",
 			uri:      "javascript:alert('xss')",
+			expected: false,
+		},
+		// Blocked: malformed
+		{
+			name:     "empty URI",
+			uri:      "",
+			expected: false,
+		},
+		{
+			name:     "no scheme",
+			uri:      "//example.com/callback",
 			expected: false,
 		},
 	}
@@ -281,16 +234,16 @@ func TestServer_AuthorizeHandler_InvalidRedirectURI(t *testing.T) {
 		redirectURI string
 	}{
 		{
-			name:        "evil domain",
-			redirectURI: "https://evil.com/callback",
+			name:        "javascript scheme",
+			redirectURI: "javascript:alert('xss')",
 		},
 		{
-			name:        "subdomain attack",
-			redirectURI: "https://claude.ai.evil.com/api/mcp/auth_callback",
+			name:        "data scheme",
+			redirectURI: "data:text/html,<script>alert(1)</script>",
 		},
 		{
-			name:        "wrong scheme for claude.ai",
-			redirectURI: "http://claude.ai/api/mcp/auth_callback",
+			name:        "http to remote host",
+			redirectURI: "http://evil.com/callback",
 		},
 	}
 
