@@ -7,6 +7,12 @@ import (
 	tagmanager "google.golang.org/api/tagmanager/v2"
 )
 
+// isClickLinkFormTrigger returns true for trigger types where the GTM API
+// silently ignores autoEventFilter and requires conditions in the filter field instead.
+func isClickLinkFormTrigger(triggerType string) bool {
+	return triggerType == "linkClick" || triggerType == "formSubmission" || triggerType == "click"
+}
+
 // CreateTag creates a new tag in the workspace.
 func (c *Client) CreateTag(ctx context.Context, accountID, containerID, workspaceID string, input *TagInput) (*CreatedTag, error) {
 	parent := BuildWorkspacePath(accountID, containerID, workspaceID)
@@ -122,11 +128,20 @@ func (c *Client) DeleteTag(ctx context.Context, path string) error {
 func (c *Client) CreateTrigger(ctx context.Context, accountID, containerID, workspaceID string, input *TriggerInput) (*CreatedTrigger, error) {
 	parent := BuildWorkspacePath(accountID, containerID, workspaceID)
 
+	// GTM API silently ignores autoEventFilter for linkClick/formSubmission/click triggers.
+	// These trigger types require conditions to be set via the filter field instead.
+	filter := input.Filter
+	autoEventFilter := input.AutoEventFilter
+	if isClickLinkFormTrigger(input.Type) && len(autoEventFilter) > 0 && len(filter) == 0 {
+		filter = autoEventFilter
+		autoEventFilter = nil
+	}
+
 	trigger := &tagmanager.Trigger{
 		Name:              input.Name,
 		Type:              input.Type,
-		Filter:            toAPIConditions(input.Filter),
-		AutoEventFilter:   toAPIConditions(input.AutoEventFilter),
+		Filter:            toAPIConditions(filter),
+		AutoEventFilter:   toAPIConditions(autoEventFilter),
 		CustomEventFilter: toAPIConditions(input.CustomEventFilter),
 		Parameter:         toAPIParams(input.Parameter),
 		Notes:             input.Notes,
@@ -136,8 +151,8 @@ func (c *Client) CreateTrigger(ctx context.Context, accountID, containerID, work
 		trigger.EventName = toAPIParam(input.EventName)
 	}
 
-	// For click/form triggers with autoEventFilter, set required companion fields
-	if len(input.AutoEventFilter) > 0 && (input.Type == "linkClick" || input.Type == "formSubmission" || input.Type == "click") {
+	// For click/form/link triggers with conditions, set required companion fields
+	if len(input.AutoEventFilter) > 0 && isClickLinkFormTrigger(input.Type) {
 		trigger.WaitForTags = &tagmanager.Parameter{Type: "boolean", Value: "false"}
 		trigger.WaitForTagsTimeout = &tagmanager.Parameter{Type: "integer", Value: "2000"}
 		trigger.CheckValidation = &tagmanager.Parameter{Type: "boolean", Value: "false"}
@@ -172,12 +187,21 @@ func (c *Client) UpdateTrigger(ctx context.Context, path string, input *TriggerI
 		return nil, mapGoogleError(err)
 	}
 
+	// GTM API silently ignores autoEventFilter for linkClick/formSubmission/click triggers.
+	// Remap to filter field for these trigger types when autoEventFilter is provided and filter is not.
+	filterInput := input.Filter
+	autoEventFilterInput := input.AutoEventFilter
+	if isClickLinkFormTrigger(input.Type) && len(autoEventFilterInput) > 0 && len(filterInput) == 0 {
+		filterInput = autoEventFilterInput
+		autoEventFilterInput = nil
+	}
+
 	// Preserve existing fields when not provided in input
-	filter := toAPIConditions(input.Filter)
+	filter := toAPIConditions(filterInput)
 	if filter == nil {
 		filter = current.Filter
 	}
-	autoEventFilter := toAPIConditions(input.AutoEventFilter)
+	autoEventFilter := toAPIConditions(autoEventFilterInput)
 	if autoEventFilter == nil {
 		autoEventFilter = current.AutoEventFilter
 	}
@@ -224,18 +248,12 @@ func (c *Client) UpdateTrigger(ctx context.Context, path string, input *TriggerI
 		trigger.EventName = current.EventName
 	}
 
-	// For click/form triggers with autoEventFilter, ensure companion fields have proper boolean values
-	// (not empty template params which indicate "All Clicks" mode)
-	if len(autoEventFilter) > 0 && (input.Type == "linkClick" || input.Type == "formSubmission" || input.Type == "click") {
-		if trigger.WaitForTags == nil || trigger.WaitForTags.Value == "" {
-			trigger.WaitForTags = &tagmanager.Parameter{Type: "boolean", Value: "false"}
-		}
-		if trigger.WaitForTagsTimeout == nil || trigger.WaitForTagsTimeout.Value == "" {
-			trigger.WaitForTagsTimeout = &tagmanager.Parameter{Type: "integer", Value: "2000"}
-		}
-		if trigger.CheckValidation == nil || trigger.CheckValidation.Value == "" {
-			trigger.CheckValidation = &tagmanager.Parameter{Type: "boolean", Value: "false"}
-		}
+	// For click/form/link triggers with conditions (filter remapped from autoEventFilter),
+	// ensure companion fields have correct boolean/integer types.
+	if len(input.AutoEventFilter) > 0 && isClickLinkFormTrigger(input.Type) {
+		trigger.WaitForTags = &tagmanager.Parameter{Type: "boolean", Value: "false"}
+		trigger.WaitForTagsTimeout = &tagmanager.Parameter{Type: "integer", Value: "2000"}
+		trigger.CheckValidation = &tagmanager.Parameter{Type: "boolean", Value: "false"}
 	}
 
 	result, err := c.Service.Accounts.Containers.Workspaces.Triggers.Update(path, trigger).Fingerprint(current.Fingerprint).Context(ctx).Do()
