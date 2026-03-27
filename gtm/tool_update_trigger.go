@@ -17,7 +17,7 @@ type UpdateTriggerInput struct {
 	Name                  string `json:"name" jsonschema:"description:Trigger name"`
 	Type                  string `json:"type" jsonschema:"description:Trigger type (e.g. pageview, customEvent, linkClick, triggerGroup)"`
 	FilterJSON            string `json:"filterJson,omitempty" jsonschema:"description:Filter conditions as JSON array for pageview triggers. Condition types: equals\\, contains\\, doesNotContain\\, startsWith\\, endsWith\\, matchRegex. Each condition has type and parameter array with arg0 (variable) and arg1 (value). (optional)"`
-	AutoEventFilterJSON   string `json:"autoEventFilterJson,omitempty" jsonschema:"description:Auto-event filter as JSON array for click/form triggers. Condition types: equals\\, contains\\, doesNotContain\\, startsWith\\, endsWith\\, matchRegex. (optional)"`
+	AutoEventFilterJSON   string `json:"autoEventFilterJson,omitempty" jsonschema:"description:Auto-event filter as JSON array for click/form triggers. Condition types: equals\\, contains\\, doesNotContain\\, startsWith\\, endsWith\\, matchRegex. NOTE: for linkClick\\, click\\, and formSubmission triggers the GTM API silently drops autoEventFilter — use filterJson instead for these types. (optional)"`
 	CustomEventFilterJSON string `json:"customEventFilterJson,omitempty" jsonschema:"description:Custom event filter as JSON array for customEvent triggers. Condition types: equals\\, contains\\, doesNotContain\\, startsWith\\, endsWith\\, matchRegex. (optional)"`
 	ParameterJSON         string `json:"parameterJson,omitempty" jsonschema:"description:Trigger parameters as JSON array. For triggerGroup type use: [{key: triggerIds, type: list, list: [{type: triggerReference, value: triggerId}, ...]}]"`
 	Notes                 string `json:"notes,omitempty" jsonschema:"description:Trigger notes (optional)"`
@@ -81,6 +81,20 @@ func registerUpdateTrigger(server *mcp.Server) {
 			}
 		}
 
+		// The GTM API silently drops autoEventFilter for linkClick, click, and
+		// formSubmission triggers. Remap to filter so the conditions are persisted.
+		// See: https://github.com/paolobietolini/gtm-mcp-server/issues/39
+		var autoEventFilterWarning string
+		if len(autoEventFilter) > 0 {
+			switch input.Type {
+			case "linkClick", "click", "formSubmission":
+				filter = append(filter, autoEventFilter...)
+				autoEventFilter = nil
+				autoEventFilterWarning = "Warning: the GTM API silently ignores autoEventFilter for " +
+					input.Type + " triggers (issue #39). Conditions were automatically remapped to filter."
+			}
+		}
+
 		triggerInput := &TriggerInput{
 			Name:              input.Name,
 			Type:              input.Type,
@@ -96,10 +110,15 @@ func registerUpdateTrigger(server *mcp.Server) {
 			return nil, UpdateTriggerOutput{}, err
 		}
 
+		message := "Trigger updated successfully"
+		if autoEventFilterWarning != "" {
+			message += ". " + autoEventFilterWarning
+		}
+
 		return nil, UpdateTriggerOutput{
 			Success: true,
 			Trigger: *trigger,
-			Message: "Trigger updated successfully",
+			Message: message,
 		}, nil
 	}
 
