@@ -237,13 +237,23 @@ func (s *Server) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 	// the client handles the response directly.
 	// For custom-scheme URIs (cursor://, vscode://), a 302 causes the browser
 	// to get stuck on the previous page (it can't render a custom-scheme URL).
-	// Instead, serve an HTML page that fires the redirect via JS — the OS
-	// intercepts the custom scheme and opens the editor, and the browser
-	// displays a clean "you can close this tab" message.
+	// JS navigation to custom schemes is also blocked by browsers without a
+	// real user gesture (click). So we serve an HTML page with a clickable
+	// button — the click satisfies the browser's user-gesture requirement and
+	// the OS intercepts the custom scheme to open the editor.
 	scheme := strings.ToLower(redirectURL.Scheme)
 	if scheme == "http" || scheme == "https" {
 		http.Redirect(w, r, finalURL, http.StatusFound)
 		return
+	}
+
+	// Infer editor name from the redirect URI scheme for friendlier UX.
+	editorName := "your editor"
+	switch scheme {
+	case "cursor":
+		editorName = "Cursor"
+	case "vscode", "vscode-insiders":
+		editorName = "VS Code"
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -255,20 +265,21 @@ func (s *Server) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 <style>
 body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f9fafb}
 .card{background:#fff;border-radius:12px;padding:40px 48px;box-shadow:0 1px 3px rgba(0,0,0,.1);text-align:center;max-width:400px}
-.icon{color:#16a34a;font-size:48px;margin-bottom:16px}
+.icon{color:#16a34a;font-size:40px;margin-bottom:16px}
 h1{font-size:20px;font-weight:600;color:#111;margin:0 0 8px}
-p{color:#6b7280;font-size:14px;margin:0}
+p{color:#6b7280;font-size:14px;margin:0 0 24px}
+.btn{display:inline-block;padding:11px 28px;background:#111;color:#fff;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500;letter-spacing:.01em}
 </style>
 </head>
 <body>
 <div class="card">
   <div class="icon">&#10003;</div>
   <h1>Authentication successful</h1>
-  <p>You can close this tab and return to your editor.</p>
+  <p>Click below to finish connecting in %s.</p>
+  <a class="btn" href=%q>Open in %s</a>
 </div>
-<script>window.location.href = %q;</script>
 </body>
-</html>`, finalURL)
+</html>`, editorName, finalURL, editorName)
 }
 
 // TokenHandler handles POST /token - exchanges code for tokens.
