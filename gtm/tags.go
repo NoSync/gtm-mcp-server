@@ -24,6 +24,7 @@ type Tag struct {
 	TagID             string              `json:"tagId"`
 	Name              string              `json:"name"`
 	Type              string              `json:"type"`
+	Parameter         any                 `json:"parameter,omitempty"`
 	FiringTriggerID   []string            `json:"firingTriggerId,omitempty"`
 	BlockingTriggerID []string            `json:"blockingTriggerId,omitempty"`
 	SetupTag          []TagSequenceRef    `json:"setupTag,omitempty"`
@@ -92,6 +93,9 @@ func toTag(t *tagmanager.Tag) Tag {
 			TagName:       s.TagName,
 			StopOnFailure: s.StopTeardownOnFailure,
 		})
+	}
+	if len(t.Parameter) > 0 {
+		tag.Parameter = t.Parameter
 	}
 	if t.ConsentSettings != nil && t.ConsentSettings.ConsentStatus != "" {
 		cs := &TagConsentSettings{
