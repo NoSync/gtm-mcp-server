@@ -21,7 +21,7 @@ import (
 
 const (
 	serverName    = "gtm-mcp-server"
-	serverVersion = "1.5.4"
+	serverVersion = "1.5.5"
 )
 
 func main() {
