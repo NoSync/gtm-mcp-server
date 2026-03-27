@@ -233,10 +233,42 @@ func (s *Server) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 		"redirect_uri", authState.RedirectURI,
 	)
 
-	// RFC 8252: for both loopback (http://localhost) and custom-scheme
-	// (cursor://, vscode://) redirect URIs, a plain 302 is the correct
-	// and standard response. The OS/app handles the rest.
-	http.Redirect(w, r, finalURL, http.StatusFound)
+	// For HTTP/HTTPS redirect URIs (e.g. Claude.ai), a plain 302 is correct —
+	// the client handles the response directly.
+	// For custom-scheme URIs (cursor://, vscode://), a 302 causes the browser
+	// to get stuck on the previous page (it can't render a custom-scheme URL).
+	// Instead, serve an HTML page that fires the redirect via JS — the OS
+	// intercepts the custom scheme and opens the editor, and the browser
+	// displays a clean "you can close this tab" message.
+	scheme := strings.ToLower(redirectURL.Scheme)
+	if scheme == "http" || scheme == "https" {
+		http.Redirect(w, r, finalURL, http.StatusFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Authentication successful</title>
+<style>
+body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f9fafb}
+.card{background:#fff;border-radius:12px;padding:40px 48px;box-shadow:0 1px 3px rgba(0,0,0,.1);text-align:center;max-width:400px}
+.icon{color:#16a34a;font-size:48px;margin-bottom:16px}
+h1{font-size:20px;font-weight:600;color:#111;margin:0 0 8px}
+p{color:#6b7280;font-size:14px;margin:0}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">&#10003;</div>
+  <h1>Authentication successful</h1>
+  <p>You can close this tab and return to your editor.</p>
+</div>
+<script>window.location.href = %q;</script>
+</body>
+</html>`, finalURL)
 }
 
 // TokenHandler handles POST /token - exchanges code for tokens.
