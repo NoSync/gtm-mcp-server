@@ -233,46 +233,10 @@ func (s *Server) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 		"redirect_uri", authState.RedirectURI,
 	)
 
-	// For standard HTTP/HTTPS redirect URIs (e.g. Claude.ai), a plain 302 is
-	// sufficient and most reliable.
-	// For custom-scheme URIs (e.g. cursor://, vscode://), browsers often block
-	// automatic JS navigation without a user gesture, so we serve an HTML page
-	// with a visible button and a JS auto-attempt as a best-effort fallback.
-	scheme := strings.ToLower(redirectURL.Scheme)
-	if scheme == "http" || scheme == "https" {
-		http.Redirect(w, r, finalURL, http.StatusFound)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Authentication successful</title>
-<style>
-body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f9fafb}
-.card{background:#fff;border-radius:12px;padding:40px 48px;box-shadow:0 1px 3px rgba(0,0,0,.1);text-align:center;max-width:420px}
-.icon{font-size:48px;margin-bottom:16px}
-h1{font-size:20px;font-weight:600;color:#111;margin:0 0 8px}
-p{color:#6b7280;font-size:14px;margin:0 0 24px}
-.btn{display:inline-block;padding:10px 24px;background:#0f172a;color:#fff;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500}
-.hint{color:#9ca3af;font-size:12px;margin-top:16px}
-</style>
-</head>
-<body>
-<div class="card">
-  <div class="icon">&#10003;</div>
-  <h1>Authentication successful</h1>
-  <p>Click the button below to return to your editor.</p>
-  <a class="btn" href=%q>Return to editor</a>
-  <p class="hint">You can close this tab once your editor is connected.</p>
-</div>
-<script>
-  try { window.location.href = %q; } catch(e) {}
-</script>
-</body>
-</html>`, finalURL, finalURL)
+	// RFC 8252: for both loopback (http://localhost) and custom-scheme
+	// (cursor://, vscode://) redirect URIs, a plain 302 is the correct
+	// and standard response. The OS/app handles the rest.
+	http.Redirect(w, r, finalURL, http.StatusFound)
 }
 
 // TokenHandler handles POST /token - exchanges code for tokens.
