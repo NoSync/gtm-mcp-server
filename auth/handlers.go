@@ -221,18 +221,45 @@ func (s *Server) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Redirect back to Claude with our code
+	// Build the redirect URL with the authorization code
 	redirectURL, _ := url.Parse(authState.RedirectURI)
 	q := redirectURL.Query()
 	q.Set("code", ourCode)
 	q.Set("state", claudeState)
 	redirectURL.RawQuery = q.Encode()
+	finalURL := redirectURL.String()
 
-	s.logger.Info("OAuth callback successful, redirecting to Claude",
+	s.logger.Info("OAuth callback successful, redirecting to client",
 		"redirect_uri", authState.RedirectURI,
 	)
 
-	http.Redirect(w, r, redirectURL.String(), http.StatusFound)
+	// Use an HTML page that triggers the redirect via JavaScript.
+	// This ensures the browser always shows a success message — important for
+	// clients like Cursor that use custom schemes (cursor://) where a plain
+	// HTTP redirect leaves the browser on a blank or error page.
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Authentication successful</title>
+<style>
+body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f9fafb}
+.card{background:#fff;border-radius:12px;padding:40px 48px;box-shadow:0 1px 3px rgba(0,0,0,.1);text-align:center;max-width:400px}
+.icon{font-size:48px;margin-bottom:16px}
+h1{font-size:20px;font-weight:600;color:#111;margin:0 0 8px}
+p{color:#6b7280;font-size:14px;margin:0}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">&#10003;</div>
+  <h1>Authentication successful</h1>
+  <p>You can close this tab and return to your editor.</p>
+</div>
+<script>window.location.href = %q;</script>
+</body>
+</html>`, finalURL)
 }
 
 // TokenHandler handles POST /token - exchanges code for tokens.
