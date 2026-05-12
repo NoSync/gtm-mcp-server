@@ -16,7 +16,5 @@ jobs:
         with:
           go-version-file: go.mod
       - uses: golang/govulncheck-action@v1
-      - uses: securego/gosec@v2.26.1
-      - uses: dominikh/staticcheck-action@v1.2.0
-        with:
-          version: "2022.1.1"
+      - uses: securego/gosec@v2
+      - uses: dominikh/staticcheck-action@v1
