@@ -23,14 +23,43 @@ Create tags, audit configurations, generate tracking plans, and publish changes,
 - [Supported AI Clients](#supported-ai-clients)
 - [What Can You Do?](#what-can-you-do)
 - [Quick Start](#quick-start)
+  - [Claude (Web & Desktop)](#claude-web--desktop)
+  - [ChatGPT](#chatgpt)
+  - [Gemini CLI](#gemini-cli)
+  - [Cursor](#cursor)
 - [Features](#features)
+  - [Tag Management](#tag-management)
+  - [Trigger Management](#trigger-management)
+  - [Container Operations](#container-operations)
+  - [Server-Side Containers](#server-side-containers)
+  - [Community Template Gallery](#community-template-gallery)
+  - [AI-Powered Workflows](#ai-powered-workflows)
 - [Use Cases](#use-cases)
+  - [Build Complete Tracking Setups](#build-complete-tracking-setups)
+  - [Implement Consent Management](#implement-consent-management)
+  - [Bulk Operations & Renaming](#bulk-operations--renaming)
+  - [Custom Variables & Logic](#custom-variables--logic)
+  - [For Agencies](#for-agencies)
 - [How It Works](#how-it-works)
 - [Safety Features](#safety-features)
 - [Self-Hosting](#self-hosting)
+  - [Service Account Mode (S2S)](#service-account-mode-s2s)
+  - [Docker Setup](#docker-setup)
+  - [Google Cloud Setup](#google-cloud-setup)
 - [Available Tools](#available-tools)
+  - [Read Operations](#read-operations)
+  - [Utility](#utility)
+  - [Write Operations](#write-operations)
+  - [Server-Side Container Tools](#server-side-container-tools)
+  - [Publishing](#publishing)
+  - [Templates](#templates)
 - [Resources & Prompts](#resources--prompts)
+  - [Resources (URI-based access)](#resources-uri-based-access)
+  - [Prompts (Workflow templates)](#prompts-workflow-templates)
 - [Better AI Context](#better-ai-context)
+  - [llms.txt — For Any LLM or Agent](#llmstxt--for-any-llm-or-agent)
+  - [Claude Code Skill — Guided Workflows](#claude-code-skill--guided-workflows)
+  - [GTM API Skill — API Reference](#gtm-api-skill--api-reference)
 - [Architecture](#architecture)
 - [Known Issues](#known-issues)
 - [Links](#links)
@@ -241,6 +270,64 @@ Your credentials are never stored—the server uses token-based authentication t
 
 Want to run your own instance?
 
+### Service Account Mode (S2S)
+
+Self-hosted deployments can use a Google Service Account so the whole team shares access — no individual GTM permissions needed.
+
+**How it works:**
+- The server authenticates to Google Tag Manager using a Service Account
+- Team members connect with a shared API key — no personal GTM access required
+- AI clients (Claude Code, ChatGPT, etc.) still do a one-time OAuth login *to the server*, but all GTM calls run under the Service Account
+- Programmatic clients (scripts, CI/CD, APIs) skip OAuth entirely and use the API key directly
+
+**Setup:**
+
+1. Create a Service Account in [Google Cloud Console](https://console.cloud.google.com/) → IAM & Admin → Service Accounts
+2. In [Google Tag Manager](https://tagmanager.google.com) → Account → Admin → User Management → add the Service Account email as **Account Administrator**
+3. Download the JSON key file
+4. Configure the server:
+
+```bash
+SERVICE_ACCOUNT_API_KEY=$(openssl rand -hex 32)   # share this with your team
+GOOGLE_SERVICE_ACCOUNT_KEY_JSON=$(cat key.json)   # paste JSON content
+go run main.go
+```
+
+On GCP (Cloud Run, GKE, Compute Engine): omit `GOOGLE_SERVICE_ACCOUNT_KEY_JSON` — Workload Identity is used automatically.
+
+**Connecting Claude Code:**
+
+Add the API key as a pre-configured header so Claude Code uses S2S automatically:
+
+```json
+{
+  "mcpServers": {
+    "gtm": {
+      "type": "http",
+      "url": "http://your-server:8080",
+      "headers": {
+        "Authorization": "Bearer your-api-key"
+      }
+    }
+  }
+}
+```
+
+**Programmatic / API access:**
+
+Any HTTP client can call the server directly — no browser, no OAuth:
+
+```bash
+curl -H "Authorization: Bearer your-api-key" \
+     -H "Content-Type: application/json" \
+     http://your-server:8080/mcp \
+     -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+See [`examples/gtm_agent.py`](examples/gtm_agent.py) for a complete Python agent that uses Claude to manage GTM programmatically via the API key.
+
+---
+
 ### Docker Setup
 
 ```bash
@@ -261,6 +348,16 @@ docker compose up -d
 # Add to Claude
 claude mcp add -t http gtm http://localhost:8080
 ```
+
+#### Reverse Proxy (TRUST_PROXY)
+
+When running behind a reverse proxy (Caddy, nginx, Cloudflare), set `TRUST_PROXY=true` so the rate limiter uses the client's real IP from `X-Forwarded-For` instead of the proxy's address:
+
+```bash
+TRUST_PROXY=true
+```
+
+The Docker Compose setup sets this automatically since the container runs behind Caddy. When running the binary directly without a proxy, leave it unset or `false` — otherwise clients can spoof IPs to bypass rate limiting.
 
 #### Docker-to-Docker
 
@@ -314,7 +411,9 @@ This enables dynamic URL resolution for trusted internal hostnames while keeping
 ### Write Operations
 | Tool | Description |
 |------|-------------|
+| `update_account` | Rename a GTM account |
 | `create_container` | Create a new container in an account |
+| `update_container` | Rename a container (preserves usage context, domain, notes) |
 | `delete_container` | Remove a container (requires confirmation) |
 | `create_workspace` | Create a new workspace in a container |
 | `create_tag` | Create a new tag |
@@ -390,34 +489,57 @@ gtm://accounts/.../workspaces/{id}/variables
 
 ## Better AI Context
 
-For best results, install the **GTM API skill** so your AI assistant understands GTM's API structure, parameter formats, and validation rules.
+The server provides two resources to help AI assistants use it more effectively — one for any LLM or agent, and one specifically for Claude Code users.
 
-### Claude Code
+### llms.txt — For Any LLM or Agent
+
+The server hosts an [`llms.txt`](https://mcp.gtmeditor.com/llms.txt) file at its root that any LLM or agent can fetch for context. It documents the GTM hierarchy, all available tools, common workflows, safety rules, and the GA4 parameter format.
+
+```
+https://mcp.gtmeditor.com/llms.txt
+```
+
+This follows the [llms.txt](https://llmstxt.org/) standard. Agent frameworks that support llms.txt will pick this up automatically. You can also fetch it manually or include it as a system prompt for custom integrations.
+
+### Claude Code Skill — Guided Workflows
+
+For Claude Code users, install the **GTM MCP skill** for guided workflows, anti-patterns to avoid, and step-by-step task patterns:
 
 ```bash
 # One-liner install
+curl -sL https://github.com/paolobietolini/gtm-mcp-server/archive/main.tar.gz | tar xz && \
+  mkdir -p ~/.claude/skills && \
+  cp -r gtm-mcp-server-main/skills/gtm-mcp ~/.claude/skills/ && \
+  rm -rf gtm-mcp-server-main
+```
+
+Or clone and copy:
+```bash
+git clone https://github.com/paolobietolini/gtm-mcp-server.git
+cp -r gtm-mcp-server/skills/gtm-mcp ~/.claude/skills/
+```
+
+The skill teaches Claude how to discover IDs, create tags with the correct parameter format, follow the publish workflow, and avoid common mistakes.
+
+### GTM API Skill — API Reference
+
+For deeper API context (parameter schemas, validation rules, request templates for all entity types), install the **GTM API skill**:
+
+**Claude Code:**
+```bash
 curl -sL https://github.com/paolobietolini/gtm-api-for-llms/archive/main.tar.gz | tar xz && \
   mkdir -p ~/.claude/skills && \
   cp -r gtm-api-for-llms-main/skills/gtm-api ~/.claude/skills/ && \
   rm -rf gtm-api-for-llms-main
 ```
 
-Or clone and copy:
-```bash
-git clone https://github.com/paolobietolini/gtm-api-for-llms.git
-cp -r gtm-api-for-llms/skills/gtm-api ~/.claude/skills/
-```
-
-### OpenAI Codex
-
+**OpenAI Codex:**
 ```bash
 curl -sL https://github.com/paolobietolini/gtm-api-for-llms/archive/main.tar.gz | tar xz && \
   mkdir -p ~/.codex/skills && \
   cp -r gtm-api-for-llms-main/skills/gtm-api ~/.codex/skills/ && \
   rm -rf gtm-api-for-llms-main
 ```
-
-### What does the skill include?
 
 The [GTM API for LLMs](https://github.com/paolobietolini/gtm-api-for-llms) repository provides LLM-optimized documentation: request templates, validation rules, workflow algorithms, and complete schemas for all GTM entity types including server-side containers.
 

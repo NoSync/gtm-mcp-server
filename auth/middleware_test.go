@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -66,6 +65,15 @@ func (m *mockTokenStore) UpdateGoogleToken(accessToken string, googleToken *oaut
 	return nil
 }
 
+func (m *mockTokenStore) ExtendTokenExpiry(accessToken string, newExpiry time.Time) error {
+	info, ok := m.tokens[accessToken]
+	if !ok {
+		return ErrTokenNotFound
+	}
+	info.ExpiresAt = newExpiry
+	return nil
+}
+
 func (m *mockTokenStore) StoreState(state *AuthState) error          { return nil }
 func (m *mockTokenStore) GetState(stateValue string) (*AuthState, error)     { return nil, ErrInvalidState }
 func (m *mockTokenStore) ConsumeState(stateValue string) (*AuthState, error) { return nil, ErrInvalidState }
@@ -121,7 +129,7 @@ func TestMiddleware_ValidToken(t *testing.T) {
 	}
 	store.StoreToken(token)
 
-	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour, nil)
+	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour, nil, nil, "")
 	handler := mw(dummyHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -142,7 +150,7 @@ func TestMiddleware_MissingAuthHeader(t *testing.T) {
 	store := newMockTokenStore()
 	logger := testLogger()
 
-	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour, nil)
+	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour, nil, nil, "")
 	handler := mw(dummyHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -171,7 +179,7 @@ func TestMiddleware_InvalidFormat(t *testing.T) {
 	store := newMockTokenStore()
 	logger := testLogger()
 
-	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour, nil)
+	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour, nil, nil, "")
 	handler := mw(dummyHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -189,7 +197,7 @@ func TestMiddleware_TokenNotFound(t *testing.T) {
 	store := newMockTokenStore()
 	logger := testLogger()
 
-	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour, nil)
+	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour, nil, nil, "")
 	handler := mw(dummyHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -237,7 +245,7 @@ func TestMiddleware_ExpiredToken_AutoRefreshSuccess(t *testing.T) {
 	}
 	store.StoreToken(token)
 
-	mw := Middleware(store, google, logger, "http://localhost:8080", 1*time.Hour, nil)
+	mw := Middleware(store, google, logger, "http://localhost:8080", 1*time.Hour, nil, nil, "")
 	handler := mw(dummyHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -250,22 +258,20 @@ func TestMiddleware_ExpiredToken_AutoRefreshSuccess(t *testing.T) {
 		t.Errorf("expected status 200 after auto-refresh, got %d", w.Code)
 	}
 
-	// The old token should be deleted
-	_, err := store.GetTokenByAccessIncludeExpired("expired-token")
-	if !errors.Is(err, ErrTokenNotFound) {
-		t.Error("expected old token to be deleted after refresh")
+	// The same access token should still be valid (extended in-place)
+	refreshed, err := store.GetTokenByAccessIncludeExpired("expired-token")
+	if err != nil {
+		t.Fatal("expected token to still exist after in-place refresh")
 	}
 
-	// A new token should exist in the store
-	found := false
-	for _, ti := range store.tokens {
-		if ti.ClientID == "test-client" && ti.GoogleToken.AccessToken == "new-google-access" {
-			found = true
-			break
-		}
+	// Google token should be updated
+	if refreshed.GoogleToken.AccessToken != "new-google-access" {
+		t.Errorf("expected Google token to be refreshed, got %s", refreshed.GoogleToken.AccessToken)
 	}
-	if !found {
-		t.Error("expected new token to be stored after auto-refresh")
+
+	// Expiry should be extended
+	if refreshed.ExpiresAt.Before(time.Now()) {
+		t.Error("expected token expiry to be extended into the future")
 	}
 }
 
@@ -287,7 +293,7 @@ func TestMiddleware_ExpiredToken_NoRefreshToken(t *testing.T) {
 	}
 	store.StoreToken(token)
 
-	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour, nil)
+	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour, nil, nil, "")
 	handler := mw(dummyHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -324,7 +330,7 @@ func TestMiddleware_ExpiredToken_ExpiredRefreshToken(t *testing.T) {
 	}
 	store.StoreToken(token)
 
-	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour, nil)
+	mw := Middleware(store, nil, logger, "http://localhost:8080", 1*time.Hour, nil, nil, "")
 	handler := mw(dummyHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -369,7 +375,7 @@ func TestMiddleware_ExpiredToken_GoogleRefreshFails(t *testing.T) {
 	}
 	store.StoreToken(token)
 
-	mw := Middleware(store, google, logger, "http://localhost:8080", 1*time.Hour, nil)
+	mw := Middleware(store, google, logger, "http://localhost:8080", 1*time.Hour, nil, nil, "")
 	handler := mw(dummyHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -443,7 +449,7 @@ func TestMiddleware_ErrorResponseFormat(t *testing.T) {
 	store := newMockTokenStore()
 	logger := testLogger()
 
-	mw := Middleware(store, nil, logger, "https://mcp.gtmeditor.com", 1*time.Hour, nil)
+	mw := Middleware(store, nil, logger, "https://mcp.gtmeditor.com", 1*time.Hour, nil, nil, "")
 	handler := mw(dummyHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -517,7 +523,7 @@ func TestMiddleware_ContextValues(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := Middleware(store, google, logger, "http://localhost:8080", 1*time.Hour, nil)
+	mw := Middleware(store, google, logger, "http://localhost:8080", 1*time.Hour, nil, nil, "")
 	handler := mw(captureHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -549,5 +555,101 @@ func TestMiddleware_ContextValues(t *testing.T) {
 	googleProvider := GetGoogleProvider(capturedCtx)
 	if googleProvider == nil {
 		t.Error("expected GoogleProvider in context")
+	}
+}
+
+// saMiddlewareWithOAuth is a helper that builds Middleware with S2S configured.
+func saMiddlewareWithOAuth(store TokenStore, apiKey string, saTS oauth2.TokenSource) func(http.Handler) http.Handler {
+	return Middleware(store, nil, testLogger(), "http://localhost:8080", 1*time.Hour, nil, saTS, apiKey)
+}
+
+func TestMiddleware_SAMode_CorrectKey(t *testing.T) {
+	store := newMockTokenStore()
+	saTS := oauth2.StaticTokenSource(&oauth2.Token{
+		AccessToken: "google-sa-token",
+		Expiry:      time.Now().Add(time.Hour),
+	})
+
+	var capturedCtx context.Context
+	captureHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedCtx = r.Context()
+		w.WriteHeader(http.StatusOK)
+	})
+
+	handler := saMiddlewareWithOAuth(store, "my-api-key", saTS)(captureHandler)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer my-api-key")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+
+	got := GetSATokenSource(capturedCtx)
+	if got == nil {
+		t.Fatal("expected SA token source in context")
+	}
+	tokenInfo := GetTokenInfo(capturedCtx)
+	if tokenInfo == nil {
+		t.Fatal("expected TokenInfo in context for auth_status compatibility")
+	}
+	if tokenInfo.ClientID != "service-account" {
+		t.Errorf("expected ClientID 'service-account', got %q", tokenInfo.ClientID)
+	}
+}
+
+func TestMiddleware_SAMode_WrongKey_NoOAuthToken(t *testing.T) {
+	store := newMockTokenStore()
+	saTS := oauth2.StaticTokenSource(&oauth2.Token{
+		AccessToken: "google-sa-token",
+		Expiry:      time.Now().Add(time.Hour),
+	})
+
+	handler := saMiddlewareWithOAuth(store, "my-api-key", saTS)(dummyHandler)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer wrong-key")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestMiddleware_SAMode_WrongKey_ValidOAuthToken(t *testing.T) {
+	store := newMockTokenStore()
+	saTS := oauth2.StaticTokenSource(&oauth2.Token{
+		AccessToken: "google-sa-token",
+		Expiry:      time.Now().Add(time.Hour),
+	})
+
+	oauthToken := &TokenInfo{
+		AccessToken: "valid-oauth-token",
+		ExpiresAt:   time.Now().Add(time.Hour),
+		GoogleToken: &oauth2.Token{
+			AccessToken: "google-oauth-token",
+			Expiry:      time.Now().Add(time.Hour),
+		},
+		ClientID:  "oauth-client",
+		CreatedAt: time.Now(),
+	}
+	store.StoreToken(oauthToken)
+
+	handler := saMiddlewareWithOAuth(store, "my-api-key", saTS)(dummyHandler)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer valid-oauth-token")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	// OAuth path should succeed even when SA mode is active
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 for valid OAuth token in SA mode, got %d", w.Code)
+	}
+	if w.Header().Get("X-Client-ID") != "oauth-client" {
+		t.Errorf("expected OAuth client ID in header, got %q", w.Header().Get("X-Client-ID"))
 	}
 }

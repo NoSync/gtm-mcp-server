@@ -33,6 +33,14 @@ type Config struct {
 	// AllowedHosts lists additional trusted hostnames for dynamic base URL resolution.
 	// Enables Docker-to-Docker contexts where the server is reached via internal aliases.
 	AllowedHosts []string
+
+	// Service account authentication (S2S mode)
+	ServiceAccountAPIKey  string // SERVICE_ACCOUNT_API_KEY
+	ServiceAccountKeyJSON string // GOOGLE_SERVICE_ACCOUNT_KEY_JSON
+
+	// TrustProxy enables trusting X-Forwarded-For for rate limiting.
+	// Set to true when behind a reverse proxy (e.g. Caddy).
+	TrustProxy bool
 }
 
 // Load reads configuration from environment variables.
@@ -53,6 +61,9 @@ func Load() (*Config, error) {
 		LogLevel:          getEnv("LOG_LEVEL", "info"),
 		AccessTokenTTL:    getEnvDuration("ACCESS_TOKEN_TTL", 8*time.Hour),
 		AllowedHosts:      getEnvList("ALLOWED_HOSTS"),
+		ServiceAccountAPIKey:  getEnv("SERVICE_ACCOUNT_API_KEY", ""),
+		ServiceAccountKeyJSON: getEnv("GOOGLE_SERVICE_ACCOUNT_KEY_JSON", ""),
+		TrustProxy:            getEnvBool("TRUST_PROXY", false),
 	}
 
 	// Validation is deferred to when auth is actually needed
@@ -103,6 +114,15 @@ func getEnvList(key string) []string {
 		return hosts
 	}
 	return nil
+}
+
+func getEnvBool(key string, defaultValue bool) bool {
+	if value := os.Getenv(key); value != "" {
+		if b, err := strconv.ParseBool(value); err == nil {
+			return b
+		}
+	}
+	return defaultValue
 }
 
 func getEnvInt(key string, defaultValue int) int {

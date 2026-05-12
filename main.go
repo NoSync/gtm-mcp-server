@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -17,11 +18,15 @@ import (
 	"gtm-mcp-server/middleware"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"golang.org/x/oauth2"
 )
+
+//go:embed llms.txt
+var llmsTxt string
 
 const (
 	serverName    = "gtm-mcp-server"
-	serverVersion = "1.5.8"
+	serverVersion = "1.6.0"
 )
 
 func main() {
@@ -77,6 +82,13 @@ func main() {
 		})
 	})
 
+	// LLM context endpoint (no auth required)
+	mux.HandleFunc("GET /llms.txt", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(llmsTxt))
+	})
+
 	// URL resolver for dynamic base URL resolution in Docker-to-Docker contexts.
 	// Only resolves dynamically for hosts in the allowlist; falls back to cfg.BaseURL.
 	var urlResolver *auth.URLResolver
@@ -93,14 +105,33 @@ func main() {
 	// RFC 8414: Authorization Server Metadata - tells clients about OAuth endpoints
 	mux.HandleFunc("GET /.well-known/oauth-authorization-server", auth.MetadataHandler(cfg.BaseURL, urlResolver))
 
+	// Service account S2S mode (runs alongside OAuth when both are configured)
+	var saTokenSource oauth2.TokenSource
+	if cfg.ServiceAccountAPIKey != "" {
+		var saErr error
+		saTokenSource, saErr = auth.NewServiceAccountTokenSource(context.Background(), cfg.ServiceAccountKeyJSON)
+		if saErr != nil {
+			logger.Error("s2s_mode_failed",
+				"error", saErr,
+				"hint", "set GOOGLE_SERVICE_ACCOUNT_KEY_JSON or deploy on GCP for Workload Identity",
+			)
+			os.Exit(1)
+		}
+		credSource := "workload_identity"
+		if cfg.ServiceAccountKeyJSON != "" {
+			credSource = "key_json"
+		}
+		logger.Info("s2s_mode_enabled", "credential_source", credSource)
+	}
+
 	// Check if OAuth is configured
 	var authServer *auth.Server
 	var tokenStore auth.TokenStore
 	oauthConfigured := cfg.ValidateAuth() == nil
 
 	// Rate limiters for public endpoints
-	oauthLimiter := middleware.NewRateLimiter(10, 20)   // 10 req/s, burst 20
-	registerLimiter := middleware.NewRateLimiter(2, 5)   // 2 req/s, burst 5
+	oauthLimiter := middleware.NewRateLimiter(10, 20, cfg.TrustProxy)   // 10 req/s, burst 20
+	registerLimiter := middleware.NewRateLimiter(2, 5, cfg.TrustProxy)   // 2 req/s, burst 5
 
 	if oauthConfigured {
 		// Set up OAuth
@@ -120,7 +151,7 @@ func main() {
 
 		// MCP endpoint with REQUIRED auth middleware and body size limit
 		// Returns 401 if no valid Bearer token - triggers Claude's OAuth flow
-		authMiddleware := auth.Middleware(tokenStore, googleProvider, logger, cfg.BaseURL, cfg.AccessTokenTTL, urlResolver)
+		authMiddleware := auth.Middleware(tokenStore, googleProvider, logger, cfg.BaseURL, cfg.AccessTokenTTL, urlResolver, saTokenSource, cfg.ServiceAccountAPIKey)
 		mux.Handle("/", authMiddleware(maxBytesHandler(5<<20, mcpHandler)))
 
 		logger.Info("OAuth configured",

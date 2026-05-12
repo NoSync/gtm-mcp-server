@@ -4,10 +4,15 @@ go-sdk-main/
 .env
 .env.deploy
 !README.md
+!ARCHITECTURE.md
+!skills/**/*.md
 .env.local
 .*/
 !.github/
 !.goreleaser.yaml
+
+# Local docs / specs
+/docs/
 
 # Build artifacts
 dist/

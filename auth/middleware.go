@@ -30,7 +30,7 @@ const (
 // If a token is expired but has a valid refresh token, it will automatically
 // refresh the token and continue the request transparently.
 // If resolver is non-nil, 401 responses will use dynamically resolved URLs.
-func Middleware(store TokenStore, google *GoogleProvider, logger *slog.Logger, baseURL string, accessTokenTTL time.Duration, resolver *URLResolver) func(http.Handler) http.Handler {
+func Middleware(store TokenStore, google *GoogleProvider, logger *slog.Logger, baseURL string, accessTokenTTL time.Duration, resolver *URLResolver, saTokenSource oauth2.TokenSource, apiKey string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Resolve the base URL for error responses
@@ -56,6 +56,20 @@ func Middleware(store TokenStore, google *GoogleProvider, logger *slog.Logger, b
 
 			accessToken := parts[1]
 
+			// S2S mode: if bearer token matches the configured API key, use the
+			// shared service account token source and skip the per-user token store.
+			if saTokenSource != nil && accessToken == apiKey {
+				ctx := context.WithValue(r.Context(), SATokenSourceKey, saTokenSource)
+				ctx = context.WithValue(ctx, TokenInfoKey, &TokenInfo{
+					ClientID:  "service-account",
+					CreatedAt: time.Now(),
+					ExpiresAt: time.Now().Add(24 * time.Hour * 365 * 10),
+				})
+				logger.Debug("authenticated request", "client_id", "service-account", "auth_mode", "s2s")
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+
 			// Look up the token
 			tokenInfo, err := store.GetTokenByAccess(accessToken)
 			if err != nil {
@@ -79,8 +93,14 @@ func Middleware(store TokenStore, google *GoogleProvider, logger *slog.Logger, b
 			ctx = context.WithValue(ctx, TokenStoreKey, store)
 			ctx = context.WithValue(ctx, GoogleProviderKey, google)
 
+			// If SA is configured, OAuth-authenticated users also use SA for GTM calls
+			if saTokenSource != nil {
+				ctx = context.WithValue(ctx, SATokenSourceKey, saTokenSource)
+			}
+
 			logger.Debug("authenticated request",
 				"client_id", tokenInfo.ClientID,
+				"auth_mode", "oauth",
 			)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
@@ -89,6 +109,8 @@ func Middleware(store TokenStore, google *GoogleProvider, logger *slog.Logger, b
 }
 
 // tryAutoRefresh attempts to refresh an expired token transparently.
+// It refreshes the Google token and updates the EXISTING token entry in-place,
+// keeping the same access token so the client's bearer token remains valid.
 func tryAutoRefresh(ctx context.Context, store TokenStore, google *GoogleProvider, logger *slog.Logger, accessToken string, baseURL string, accessTokenTTL time.Duration) (*TokenInfo, error) {
 	logger.Info("auth_token_expired", "token_prefix", truncateToken(accessToken), "action", "auto_refresh")
 
@@ -118,44 +140,27 @@ func tryAutoRefresh(ctx context.Context, store TokenStore, google *GoogleProvide
 		return nil, fmt.Errorf("Token expired, failed to refresh")
 	}
 
-	// Generate new tokens (rotation)
-	newAccessToken, err := GenerateToken(32)
-	if err != nil {
-		logger.Warn("auth_auto_refresh_failed", "reason", "token_generation_failed", "error", err)
-		return nil, fmt.Errorf("Token expired")
-	}
+	// Update the existing token in-place: extend expiry and swap the Google token.
+	// The access token stays the same so the client's current bearer remains valid.
+	expiredToken.GoogleToken = newGoogleToken
+	expiredToken.ExpiresAt = time.Now().Add(accessTokenTTL)
 
-	newRefreshToken, err := GenerateToken(32)
-	if err != nil {
-		logger.Warn("auth_auto_refresh_failed", "reason", "token_generation_failed", "error", err)
-		return nil, fmt.Errorf("Token expired")
-	}
-
-	// Delete old token
-	_ = store.DeleteToken(accessToken)
-
-	// Store new token
-	newTokenInfo := &TokenInfo{
-		AccessToken:      newAccessToken,
-		RefreshToken:     newRefreshToken,
-		ExpiresAt:        time.Now().Add(accessTokenTTL),
-		RefreshExpiresAt: time.Now().Add(30 * 24 * time.Hour),
-		GoogleToken:      newGoogleToken,
-		ClientID:         expiredToken.ClientID,
-		CreatedAt:        time.Now(),
-	}
-
-	if err := store.StoreToken(newTokenInfo); err != nil {
+	if err := store.UpdateGoogleToken(accessToken, newGoogleToken); err != nil {
 		logger.Warn("auth_auto_refresh_failed", "reason", "store_failed", "error", err)
 		return nil, fmt.Errorf("Token expired")
 	}
 
+	// Extend the access token expiry in the store
+	if err := store.ExtendTokenExpiry(accessToken, expiredToken.ExpiresAt); err != nil {
+		logger.Warn("auth_auto_refresh_extend_failed", "error", err)
+	}
+
 	logger.Info("auth_auto_refresh_success",
 		"client_id", expiredToken.ClientID,
-		"new_expiry", newTokenInfo.ExpiresAt,
+		"new_expiry", expiredToken.ExpiresAt,
 	)
 
-	return newTokenInfo, nil
+	return expiredToken, nil
 }
 
 // OptionalMiddleware allows unauthenticated requests but adds token info if present.

@@ -2,6 +2,7 @@ package gtm
 
 import (
 	"context"
+	"fmt"
 
 	tagmanager "google.golang.org/api/tagmanager/v2"
 )
@@ -23,6 +24,31 @@ func (c *Client) ListAccounts(ctx context.Context) ([]Account, error) {
 	}
 
 	return toAccounts(resp.Account), nil
+}
+
+// UpdateAccount renames a GTM account. It fetches the current account first to get the fingerprint.
+func (c *Client) UpdateAccount(ctx context.Context, accountID, name string) (*Account, error) {
+	path := fmt.Sprintf("accounts/%s", accountID)
+
+	current, err := retryWithBackoff(ctx, 3, func() (*tagmanager.Account, error) {
+		return c.Service.Accounts.Get(path).Context(ctx).Do()
+	})
+	if err != nil {
+		return nil, mapGoogleError(err)
+	}
+
+	current.Name = name
+
+	updated, err := c.Service.Accounts.Update(path, current).Fingerprint(current.Fingerprint).Context(ctx).Do()
+	if err != nil {
+		return nil, mapGoogleError(err)
+	}
+
+	return &Account{
+		AccountID: updated.AccountId,
+		Name:      updated.Name,
+		Path:      updated.Path,
+	}, nil
 }
 
 func toAccounts(accounts []*tagmanager.Account) []Account {
